@@ -1,18 +1,12 @@
-﻿<div align="center">
+﻿# agentlink
 
-# agentlink
-
-**Switch agents. Keep the plot.**
-
-DSH · Codex (ChatGPT) · Claude Code
+**Switch agents. Keep the plot.** One project, three tools — DSH, Codex (ChatGPT), Claude Code.
 
 [![tests](https://github.com/gougougouz/agent-context-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/gougougouz/agent-context-bridge/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.9%2B-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 
-[English](README.md) · [简体中文](README.zh-CN.md)
-
-</div>
+English · [简体中文](README.zh-CN.md)
 
 ---
 

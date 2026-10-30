@@ -1,18 +1,12 @@
-﻿<div align="center">
+﻿# agentlink
 
-# agentlink
-
-**换工具，不换思路。**
-
-DSH · Codex（ChatGPT）· Claude Code
+**换工具，不换思路。** 一个项目，三个工具 —— DSH、Codex（ChatGPT）、Claude Code。
 
 [![tests](https://github.com/gougougouz/agent-context-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/gougougouz/agent-context-bridge/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.9%2B-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 
 [English](README.md) · 简体中文
-
-</div>
 
 ---
 
