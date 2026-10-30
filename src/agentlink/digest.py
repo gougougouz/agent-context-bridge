@@ -1,4 +1,4 @@
-"""Turn the journal into a compact, agent-readable project brief (context.md).
+﻿"""Turn the journal into a compact, agent-readable project brief (context.md).
 
 Two layers:
   * rules   — always available, deterministic, free (this module)
@@ -327,7 +327,7 @@ def _snapshot_block(store: Store) -> Block:
             lines.append("- 工作区干净")
     else:
         lines.append("- 不是 Git 仓库（进度以会话与 note 为准）")
-    return Block(2, "项目快照", lines)
+    return Block(3, "项目快照", lines)
 
 
 def _delta_block(store: Store, events: list[Event]) -> Block | None:
@@ -384,9 +384,9 @@ def build_sections(
         for view in views[: SECTION_LIMITS["sessions"]]:
             session_lines.extend(view.render_card(store.config["digest"].get("per_session_messages", 6)))
             session_lines.append("")
-        blocks.append(Block(2, "各会话卡片", session_lines))
+        blocks.append(Block(1, "各会话卡片", session_lines))
     else:
-        blocks.append(Block(2, "各会话卡片", ["- 还没有读到任何会话记录。先运行 `agentlink sync`。"]))
+        blocks.append(Block(1, "各会话卡片", ["- 还没有读到任何会话记录。先运行 `agentlink sync`。"]))
 
     todos = _notes(store, "todo") + _todo_from_requests(events) + _scan(
         events, TODO_HINT, SECTION_LIMITS["todos"])

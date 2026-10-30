@@ -1,4 +1,4 @@
-# agent-context-bridge
+﻿# agent-context-bridge
 
 **Sync project context and progress across DSH, Codex (ChatGPT) and Claude Code.**
 
@@ -49,7 +49,7 @@ $ agentlink brief
 
 - **One project, three agents** — DSH, Codex and Claude Code write incompatible formats in
   incompatible places; you shouldn't have to re-explain your project after every switch.
-- **Token-frugal by default** — a brief costs ~1.5k tokens, and the expensive AI summary is
+- **Token-frugal by default** — a brief costs ~2k tokens, and the expensive AI summary is
   **cached across agents**. Pay once, reuse everywhere.
 - **Two layers** — deterministic facts (git state, tasks, timeline, files touched) always;
   a structured handoff written by an agent when it's actually worth the tokens.
@@ -89,7 +89,7 @@ Each copy gets a launcher and a `LOCAL.md` with absolute paths, so it works even
 ```powershell
 cd F:\path\to\your-project
 agentlink init          # create .agentlink/, discover existing sessions
-agentlink brief         # ~1.5k tokens: the thing you paste into an agent
+agentlink brief         # ~2k tokens: the thing you paste into an agent
 ```
 
 From that point on, in **any** of the three tools:
@@ -107,7 +107,7 @@ The skill is designed so a normal invocation stays cheap, and expensive work is 
 | Tier | Command | Cost | When |
 | --- | --- | --- | --- |
 | L0 | `agentlink status` | ~50 tokens | is there anything to sync at all? |
-| **L1** | `agentlink brief` | ~1.5k tokens | default: switching tools, "where were we?" |
+| **L1** | `agentlink brief` | ~2k tokens | default: switching tools, "where were we?" |
 | L2 | `agentlink brief --full` | ~6k tokens | the user wants detail |
 | L3 | `agentlink digest` → agent writes JSON → `agentlink summary apply` | 3–8k **once**, then cached | long handoffs, cross-day work |
 
@@ -123,7 +123,7 @@ Typical steady state: **one L3 pass per milestone, L1 on every switch.**
 | --- | --- |
 | `agentlink init` | Create `.agentlink/` and list discovered sessions |
 | `agentlink sync` | Pull new records; refresh the rules-based brief |
-| `agentlink brief` | Print the brief (default 1800 tokens) |
+| `agentlink brief` | Print the brief (default 2200 tokens) |
 | `agentlink brief --full` / `--budget-tokens N` | Bigger / custom budget |
 | `agentlink brief --stats` | Append token count and AI-summary freshness |
 | `agentlink digest [--full] [--max-tokens N]` | Compact material for an agent to summarize |

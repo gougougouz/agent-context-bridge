@@ -1,4 +1,4 @@
----
+﻿---
 name: agent-context-bridge
 description: 在 DSH / Codex（ChatGPT）/ Claude Code 之间同步同一个项目的对话上下文与进度。当用户切换 agent、额度用完换工具、上下文丢失、说"接着之前的做"，或问"之前聊到哪了 / 项目进度如何"时使用。
 whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到额度/上下文断了、继续之前的任务、查看其他 agent 的记录。
@@ -16,7 +16,7 @@ whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到�
 | 档位 | 命令 | 花费 | 什么时候用 |
 | --- | --- | --- | --- |
 | L0 探路 | `agentlink status` | ≈50 tokens | 不确定有没有历史、先看三家有没有数据 |
-| **L1 默认** | `agentlink brief` | ≈1500 tokens | 绝大多数情况：换工具、继续任务、问进度 |
+| **L1 默认** | `agentlink brief` | ≈2000 tokens | 绝大多数情况：换工具、继续任务、问进度 |
 | L2 详细 | `agentlink brief --full` | ≈6000 tokens | 用户要"看得细一点"、或 L1 明显不够 |
 | L3 深度 | `agentlink digest` → 写 JSON → `agentlink summary apply` | 一次 3–8k，之后**缓存复用** | 长任务交接、跨多天、L1/L2 反复解释同一件事 |
 
@@ -88,7 +88,7 @@ agentlink show --session <id 前缀> --role user --limit 20
 | 命令 | 作用 |
 | --- | --- |
 | `agentlink status` | 数据源、会话数、AI 摘要是否落后（L0） |
-| `agentlink brief` | 项目速览，默认 1800 tokens（L1） |
+| `agentlink brief` | 项目速览，默认 2200 tokens（L1） |
 | `agentlink brief --full` | 完整速览，约 6000 tokens（L2） |
 | `agentlink brief --budget-tokens N` | 自定义预算 |
 | `agentlink digest` | 给 agent 做摘要的增量材料（L3 第 1 步） |

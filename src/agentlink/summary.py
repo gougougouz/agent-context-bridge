@@ -187,14 +187,14 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
         if not items:
             continue
         lines.append(f"**{labels[field]}**")
-        for item in items[:4]:
+        for item in items[:3]:
             lines.append(f"- {truncate_width(item, 180)}")
         lines.append("")
 
     sessions = data.get("sessions") or []
     if sessions:
         lines.append("**各会话结论**")
-        for item in sessions[:4]:
+        for item in sessions[:3]:
             agent = AGENT_LABELS.get(item.get("agent", ""), item.get("agent") or "?")
             head = item.get("title") or item.get("id") or ""
             one = item.get("one_line") or ""
@@ -210,7 +210,7 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
     notes = data.get("notes_for_next_agent") or []
     if notes:
         lines.append("**给接手者的提醒**")
-        for note in notes[:4]:
+        for note in notes[:3]:
             lines.append(f"- {truncate_width(note, 220)}")
         lines.append("")
 
@@ -219,3 +219,4 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
         lines.append("")
 
     return lines
+

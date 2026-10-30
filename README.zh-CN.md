@@ -1,4 +1,4 @@
-# agent-context-bridge
+﻿# agent-context-bridge
 
 **在 DSH、Codex（ChatGPT）与 Claude Code 之间同步项目上下文与进度。**
 
@@ -48,7 +48,7 @@ $ agentlink brief
 
 - **一个项目，三个 agent** —— DSH、Codex、Claude Code 的会话格式和存放位置互不兼容，
   不该每次换工具都重新解释一遍项目。
-- **默认省 token** —— 一次 `brief` 约 1.5k tokens，最贵的 AI 摘要是**跨 agent 缓存**的：
+- **默认省 token** —— 一次 `brief` 约 2k tokens，最贵的 AI 摘要是**跨 agent 缓存**的：
   花一次，三家共用。
 - **两层设计** —— 规则保证永远有事实（git 状态、待办、时间线、碰过的文件）；
   真正值得花 token 时才让 agent 写一份结构化交接。
@@ -85,7 +85,7 @@ python -m agentlink install          # 加 --path 顺带把 agentlink 加进 PAT
 ```powershell
 cd F:\你的项目
 agentlink init          # 建 .agentlink/，探测已有会话
-agentlink brief         # 约 1.5k tokens，交给 agent 的那份东西
+agentlink brief         # 约 2k tokens，交给 agent 的那份东西
 ```
 
 之后在任何一家工具里：
@@ -103,7 +103,7 @@ agentlink hook                   # 可选：往 AGENTS.md / CLAUDE.md 埋提示�
 | 档位 | 命令 | 花费 | 场景 |
 | --- | --- | --- | --- |
 | L0 | `agentlink status` | ≈50 tokens | 先确认有没有东西可同步 |
-| **L1** | `agentlink brief` | ≈1.5k tokens | 默认：换工具、"之前聊到哪了" |
+| **L1** | `agentlink brief` | ≈2k tokens | 默认：换工具、"之前聊到哪了" |
 | L2 | `agentlink brief --full` | ≈6k tokens | 用户要看细节 |
 | L3 | `agentlink digest` → agent 写 JSON → `agentlink summary apply` | 3–8k，**只花一次** | 长任务交接、跨天工作 |
 
@@ -118,7 +118,7 @@ agentlink hook                   # 可选：往 AGENTS.md / CLAUDE.md 埋提示�
 | --- | --- |
 | `agentlink init` | 建 `.agentlink/`，列出发现的会话 |
 | `agentlink sync` | 抽取新记录，刷新规则速览 |
-| `agentlink brief` | 打印速览（默认 1800 tokens） |
+| `agentlink brief` | 打印速览（默认 2200 tokens） |
 | `agentlink brief --full` / `--budget-tokens N` | 更大 / 自定义预算 |
 | `agentlink brief --stats` | 末尾附 token 数与 AI 摘要新鲜度 |
 | `agentlink digest [--full] [--max-tokens N]` | 给 agent 做摘要的紧凑材料 |

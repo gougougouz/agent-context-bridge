@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "version": CONFIG_VERSION,
     "agents": ["dsh", "codex", "claude"],
     "digest": {
-        "budget_tokens": 1800,     # default brief size — keep cheap
+        "budget_tokens": 2200,     # default brief size — keep cheap
         "full_tokens": 6000,       # `brief --full`
         "budget": 0,               # legacy width budget; 0 = derive from tokens
         "max_events": 400,         # journal events considered
@@ -156,3 +156,4 @@ class Store:
                 p.stat().st_size for p in self.dir.glob("*") if p.is_file()
             ) if self.dir.exists() else 0,
         }
+
