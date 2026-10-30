@@ -248,7 +248,7 @@ re-read. Refresh when `brief --stats` says it is behind, or when the work genuin
 ```
 your-project/
 ├── .agentlink/              # git-ignored, disposable
-│   ├── config.json          # agents, token budgets, git toggle
+│   ├── config.json          # agents, extra roots, token budgets, git toggle
 │   ├── state.json           # per-file cursors, session titles, seen records
 │   ├── journal.jsonl        # normalised events (rebuildable)
 │   ├── notes.jsonl          # your `agentlink note` entries
@@ -308,6 +308,7 @@ overwriting a good summary with an empty one.
 | --- | --- |
 | `agentlink: command not found` | the PATH entry takes effect in new terminals only; or use the launcher inside the skill folder (its `LOCAL.md` has the absolute path) |
 | a tool reports `0 sessions` | the project's working directory differs from what the transcript recorded — run once with `--root <old path>` |
+| the project was moved or renamed | add the old absolute path to `roots` in `.agentlink/config.json`; the transcripts recorded there come back |
 | `zstandard is not installed` | only DSH needs it: `python -m pip install zstandard` |
 | brief looks empty | records are older than `--since`, or belong to another path; `agentlink status` shows what was found |
 | summary marked stale | more than a handful of new records arrived; rerun the L3 loop, or ignore it — the rules layer is still current |
@@ -342,8 +343,9 @@ python -m unittest discover -s tests -v     # 15 offline tests, temp fixtures on
 PYTHONPATH=src python -m agentlink doctor
 ```
 
-CI runs the suite on Ubuntu and Windows, Python 3.9 and 3.12. Tests never touch real
-transcripts: each writes synthetic sessions into a temporary home directory, including a
+The checkout is self-contained, so it can sit next to other skills — this copy lives in
+`F:\development\skills\agent-context-bridge`. CI runs the suite on Ubuntu and Windows, Python
+3.9 and 3.12. Tests never touch real transcripts: each writes synthetic sessions into a temporary home directory, including a
 deliberately corrupt line to prove reads survive it.
 
 ```

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ..model import AGENTS, Event, IngestResult, Session
 from ..store import Store
 from ..util import debug, now_iso
@@ -34,6 +36,18 @@ def get_source(name: str) -> Source:
         raise SystemExit(f"未知 agent: {name}（可选: {', '.join(SOURCES)}）") from None
 
 
+def project_roots(store: Store) -> list[str]:
+    """The project root plus any old paths recorded in config.roots (project moved)."""
+    roots = [str(store.root)]
+    for extra in store.config.get("roots") or []:
+        try:
+            if extra and Path(extra).is_dir() and str(extra) not in roots:
+                roots.append(str(extra))
+        except OSError:
+            continue
+    return roots
+
+
 def discover_sessions(store: Store, agents: list[str] | None = None) -> list[Session]:
     names = agents or list(store.config.get("agents") or AGENTS)
     out: list[Session] = []
@@ -44,12 +58,13 @@ def discover_sessions(store: Store, agents: list[str] | None = None) -> list[Ses
         if not src.available():
             debug(f"{name}: no transcript directory at {src.root_dir()}")
             continue
-        try:
-            found = src.discover(str(store.root))
-        except Exception as exc:
-            debug(f"{name}: discovery failed: {exc}")
-            continue
-        out.extend(found)
+        for root in project_roots(store):
+            try:
+                found = src.discover(root)
+            except Exception as exc:
+                debug(f"{name}: discovery failed for {root}: {exc}")
+                continue
+            out.extend(found)
     out.sort(key=lambda s: s.modified, reverse=True)
     return out
 
@@ -71,8 +86,10 @@ def sync(store: Store, agents: list[str] | None = None) -> list[IngestResult]:
             result.errors.append(f"未找到 {src.label} 的会话目录: {src.root_dir()}")
             results.append(result)
             continue
+        sessions = []
         try:
-            sessions = src.discover(str(store.root))
+            for root in project_roots(store):
+                sessions.extend(src.discover(root))
         except Exception as exc:
             result.errors.append(str(exc))
             results.append(result)

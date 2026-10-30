@@ -433,6 +433,28 @@ class AgentlinkTestCase(unittest.TestCase):
                 if any(byte > 127 for byte in line):
                     self.fail(f"{name}:{lineno} is not ASCII: {line[:60]!r}")
 
+    def test_alias_root_finds_moved_project(self):
+        """After a project moves, config.roots lets the old transcripts count."""
+        old_root = self.tmp / "old-project"
+        old_root.mkdir()
+        session = self.write_dsh(
+            [{"type": "session_meta", "id": "s1", "cwd": str(old_root), "title": "old"}],
+            cwd=str(old_root),
+        )
+        self.assertTrue(session.exists())
+
+        store = self.store()
+        from agentlink.sources import discover_sessions
+
+        self.assertEqual(discover_sessions(store, ["dsh"]), [])  # nothing claims the new root yet
+
+        store.config["roots"] = [str(old_root)]
+        store.save_config()
+
+        found = discover_sessions(store, ["dsh"])
+        self.assertTrue(found, "alias root should surface the old session")
+        self.assertEqual(found[0].cwd, str(old_root))
+
 
 if __name__ == "__main__":
     unittest.main()

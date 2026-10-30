@@ -233,7 +233,7 @@ L3 是"既省又准"的关键：`digest` 交出去的是上一版摘要加上之
 ```
 your-project/
 ├── .agentlink/              # 被 git 忽略，随时可删
-│   ├── config.json          # agent 列表、token 预算、git 开关
+│   ├── config.json          # agent 列表、旧路径、token 预算、git 开关
 │   ├── state.json           # 文件游标、会话标题、已见记录
 │   ├── journal.jsonl        # 归一化记录（可重建）
 │   ├── notes.jsonl          # `agentlink note` 写的内容
@@ -290,6 +290,7 @@ your-project/
 | --- | --- |
 | 找不到 `agentlink` | 安装脚本加的 PATH 只在新终端生效；或直接用技能目录里的启动器（`LOCAL.md` 有绝对路径） |
 | 某一家显示 `0 个会话` | 那个项目在该工具里的工作目录和记录不一致，用 `--root <当时的路径>` 跑一次 |
+| 项目挪了位置或改了名 | 把旧路径加进 `.agentlink/config.json` 的 `roots`，那边的历史就会回来 |
 | 提示 `zstandard is not installed` | 只有 DSH 需要：`python -m pip install zstandard` |
 | 速览是空的 | 记录比 `--since` 更早，或者属于别的路径；`agentlink status` 会说明找到了什么 |
 | 摘要被标成"落后" | 新增记录超过阈值；重新走一次 L3，或者直接忽略 —— 规则层仍然是最新的 |
@@ -321,6 +322,7 @@ python -m unittest discover -s tests -v     # 15 个离线测试，只用临时�
 PYTHONPATH=src python -m agentlink doctor
 ```
 
+仓库是自包含的，可以和别的技能并排放 —— 现在这份在 `F:\development\skills\agent-context-bridge`。
 CI 在 Ubuntu 和 Windows 上跑 Python 3.9 与 3.12。测试不碰真实会话：每个用例把合成数据
 写进临时 home 目录，其中一条故意写成坏行，用来证明读取不会因此中断。
 
