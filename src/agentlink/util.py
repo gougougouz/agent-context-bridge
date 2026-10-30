@@ -14,9 +14,14 @@ WINDOWS = os.name == "nt"
 
 
 def ci(path: str | os.PathLike) -> str:
-    """Normalize a path for comparison (case-insensitive on Windows)."""
-    p = os.path.normpath(os.path.abspath(str(path)))
-    p = os.path.normcase(p)
+    """Normalize a path for comparison (case-insensitive, long form on Windows).
+
+    realpath matters on Windows: temp paths can arrive as 8.3 short names
+    (``RUNNER~1``) while the project root is the long form, and a naive string
+    compare would then claim the session belongs to another project.
+    """
+    p = os.path.realpath(os.path.abspath(str(path)))
+    p = os.path.normcase(os.path.normpath(p))
     return p.replace("\\", "/").rstrip("/")
 
 

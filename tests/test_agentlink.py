@@ -1,4 +1,4 @@
-﻿"""Offline tests for the three transcript readers and the digest builder.
+"""Offline tests for the three transcript readers and the digest builder.
 
 Run with:  python -m unittest discover -s tests -v
 No real agent data is touched: every fixture is written into a temp directory.
@@ -38,7 +38,9 @@ class AgentlinkTestCase(unittest.TestCase):
         self.project = self.tmp / "project"
         self.state = self.tmp / "state"
         global PROJECT
-        PROJECT = str(self.tmp / 'project')
+        # resolve(): Windows temp dirs can come back as 8.3 short paths
+        # (RUNNER~1) while the store root is the long form.
+        PROJECT = str((self.tmp / 'project').resolve())
         for p in (self.home, self.project, self.state):
             p.mkdir(parents=True, exist_ok=True)
         self._env = {}
