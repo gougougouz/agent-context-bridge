@@ -9,7 +9,14 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .digest import build_context, build_handoff, group_sessions
+from . import summary as summary_mod
+from .digest import (
+    build_context,
+    build_digest_payload,
+    build_handoff,
+    estimate_tokens,
+    group_sessions,
+)
 from .gitinfo import find_git
 from .install import (
     MARK_BEGIN,
@@ -25,7 +32,7 @@ from .install import (
 from .model import AGENTS, AGENT_LABELS
 from .sources import SOURCES, discover_sessions, sync as sync_sources
 from .store import Store
-from .util import human_size, rel_time, width
+from .util import human_size, now_iso, rel_time, width
 
 
 # --------------------------------------------------------------------- helpers
@@ -144,20 +151,95 @@ def cmd_brief(args) -> int:
     if not args.no_sync:
         sync_sources(store, agents=_agent_names(args.agent))
     events = store.events(limit=args.max_events or 400)
-    context = build_context(store, budget=args.budget, include_git=not args.no_git,
-                            max_events=args.max_events)
+    context = build_context(
+        store,
+        budget=args.budget,
+        include_git=not args.no_git,
+        max_events=args.max_events,
+        budget_tokens=args.budget_tokens,
+        full=args.full,
+        with_ai=not args.no_ai,
+    )
     store.context_path.write_text(context, encoding="utf-8", newline="\n")
+    store.state["last_brief_ts"] = now_iso()
     store.save_state()
+    tokens = estimate_tokens(context)
     if args.json:
         views = group_sessions(events)
         _out(json.dumps({
             "root": str(store.root),
             "sessions": len(views),
             "events": len(events),
+            "tokens": tokens,
             "context": context,
         }, ensure_ascii=False, indent=2))
         return 0
     sys.stdout.write(context)
+    if args.stats:
+        ai = summary_mod.load(store)
+        pending = summary_mod.new_events_since(store, ai) if ai else []
+        _out(f"\n[agentlink] 约 {tokens} tokens；"
+             f"AI 摘要 {'有，落后 ' + str(len(pending)) + ' 条' if ai else '无'}；"
+             f"文件 {store.context_path}")
+    return 0
+
+
+def cmd_digest(args) -> int:
+    """Print the compact input an agent needs in order to write summary.json."""
+    store = open_store(args)
+    if not args.no_sync:
+        sync_sources(store, agents=_agent_names(args.agent))
+    cfg = store.config["digest"].get("ai") or {}
+    max_tokens = args.max_tokens or int(cfg.get("max_input_tokens") or 6000)
+    payload = build_digest_payload(
+        store,
+        max_tokens=max_tokens,
+        since_last=not args.full,
+        max_events=args.max_events or 400,
+    )
+    text = json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8", newline="\n")
+        _out(f"已写入 {args.out}（约 {estimate_tokens(text)} tokens，模式 {payload['mode']}）")
+    else:
+        sys.stdout.write(text + "\n")
+    return 0
+
+
+def cmd_summary(args) -> int:
+    store = open_store(args)
+    if args.action == "show":
+        data = summary_mod.load(store)
+        if not data:
+            _out("还没有 AI 摘要。运行 `agentlink digest` 拿到材料后，"
+                 "让 agent 写一份 JSON 再 `agentlink summary apply`。")
+            return 0
+        sys.stdout.write("\n".join(summary_mod.render(store, data)) + "\n")
+        return 0
+    if args.action == "clear":
+        path = summary_mod.path_for(store)
+        if path.exists():
+            path.unlink()
+            _out(f"已删除 {path}")
+        else:
+            _out("没有可删除的摘要。")
+        return 0
+    # apply
+    if args.file and args.file != "-":
+        raw = Path(args.file).read_text(encoding="utf-8")
+    else:
+        raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"JSON 解析失败：{exc}") from None
+    data = summary_mod.save(store, payload)
+    pending, count = summary_mod.needs_refresh(store, data)
+    _out(f"已保存 AI 摘要：{summary_mod.path_for(store)}")
+    _out(f"覆盖：{data['window']['from'] or '?'} → {data['window']['to'] or '?'}；"
+         f"会话 {len(data['sessions'])} 个；待办 {len(data['state']['in_progress'])} 项")
+    if pending:
+        _out(f"提示：此后还有 {count} 条新记录，需要时可以再整理一次。")
     return 0
 
 
@@ -197,6 +279,16 @@ def cmd_status(args) -> int:
     _out(f"状态目录：{store.dir}")
     _out(f"记录：{stats['events']} 条；已知会话 {stats['sessions']} 个；"
          f"上次同步 {rel_time(stats['last_sync']) if stats['last_sync'] else '从未'}")
+    ai = summary_mod.load(store)
+    if ai:
+        pending, count = summary_mod.needs_refresh(store, ai)
+        state = f"累计 {count} 条新记录" + ("，建议重新整理" if pending else "，仍够用")
+        _out(f"AI 摘要：{rel_time(ai.get('generated_at') or '')} 生成；{state}")
+    else:
+        _out("AI 摘要：无（`agentlink digest` → agent 整理 → `agentlink summary apply`）")
+    if store.context_path.exists():
+        text = store.context_path.read_text(encoding="utf-8", errors="replace")
+        _out(f"缓存的速览：约 {estimate_tokens(text)} tokens（{store.context_path.name}）")
     _out("")
     for name in AGENTS:
         src = SOURCES[name]
@@ -334,7 +426,7 @@ def build_parser() -> argparse.ArgumentParser:
         if root:
             p.add_argument("--root", help="项目根目录（默认向上查找 .agentlink，否则用当前目录）")
         p.add_argument("--agent", help="只处理这些 agent，逗号分隔：dsh,codex,claude")
-        p.add_argument("--budget", type=int, help="速览的最大显示宽度（默认取配置 24000）")
+        p.add_argument("--budget", type=int, help="速览的最大显示宽度（一般不直接用，见 --budget-tokens）")
         p.add_argument("--max-events", type=int, help="参与摘要的最近记录条数")
 
     p = sub.add_parser("init", help="在项目里初始化 .agentlink 并探测历史会话")
@@ -352,8 +444,27 @@ def build_parser() -> argparse.ArgumentParser:
     common(p)
     p.add_argument("--no-sync", action="store_true", help="只读已有记录，不扫描新内容")
     p.add_argument("--no-git", action="store_true")
+    p.add_argument("--no-ai", action="store_true", help="不合并 AI 摘要，只用规则结果")
+    p.add_argument("--budget-tokens", type=int, help="速览的 token 预算（默认 1500）")
+    p.add_argument("--full", action="store_true", help="用完整预算（默认 6000 tokens）")
+    p.add_argument("--stats", action="store_true", help="末尾附带 token 与摘要状态")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_brief)
+
+    p = sub.add_parser("digest", help="输出给 agent 做 AI 摘要的紧凑材料（增量，默认封顶 6000 tokens）")
+    common(p)
+    p.add_argument("--no-sync", action="store_true")
+    p.add_argument("--full", action="store_true", help="不用已有摘要，输出完整会话卡片")
+    p.add_argument("--max-tokens", type=int, help="材料上限，默认 6000")
+    p.add_argument("--out", help="写入文件而不是打印")
+    p.add_argument("--pretty", action="store_true")
+    p.set_defaults(func=cmd_digest)
+
+    p = sub.add_parser("summary", help="应用/查看/清除 agent 写的结构化摘要")
+    p.add_argument("action", choices=["apply", "show", "clear"])
+    p.add_argument("--file", "-f", help="JSON 文件；- 或省略则读 stdin")
+    p.add_argument("--root")
+    p.set_defaults(func=cmd_summary)
 
     p = sub.add_parser("note", help="写入一条人工进度/决定/待办")
     p.add_argument("text", nargs="+", help="内容")

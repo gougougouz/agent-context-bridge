@@ -1,81 +1,121 @@
 ---
 name: agent-context-bridge
-description: 在 DSH / Codex（现统一叫 ChatGPT）/ Claude Code 之间同步同一个项目的对话上下文与进度。当用户切换 agent、五小时额度用完要换工具、上下文丢失、说"接着之前的做"，或询问"之前聊到哪了 / 项目进度如何"时使用。
-whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到额度限制、上下文断了、继续之前的任务、查看其他 agent 的记录。
+description: 在 DSH / Codex（ChatGPT）/ Claude Code 之间同步同一个项目的对话上下文与进度。当用户切换 agent、额度用完换工具、上下文丢失、说"接着之前的做"，或问"之前聊到哪了 / 项目进度如何"时使用。
+whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到额度/上下文断了、继续之前的任务、查看其他 agent 的记录。
 ---
 
 # 项目上下文桥（agentlink）
 
-同一个项目里，DSH、Codex（ChatGPT 桌面端）和 Claude Code 各自把对话存在自己的目录里，
-换工具时新 agent 看不到之前的讨论和进度。这个技能把三家的会话记录读出来，
-生成一份可以塞进上下文的项目速览，让接手的一方几行字内对齐。
+三家 agent 各自把对话存在自己的目录里，换工具后新 agent 看不到之前的讨论和进度。
+本技能把三家的本地会话读出来，合成一份可直接进上下文的项目速览。
 
-## 什么时候必须用
+**默认走最省 token 的路径；只有用户明确需要"深度接手"时才升级。**
 
-- 用户在 Codex / Claude / DSH 之间切换，并说"继续"、"接着做"、"刚才说到哪"。
-- 用户提到 5 小时额度用完、token 用尽、被限流，需要换工具继续。
-- 用户问"之前别的 agent 说了什么"、"这个项目现在到哪一步了"。
-- 你在新会话里发现 `.agentlink/context.md` 存在（说明这个项目之前用过本技能）。
+## 一、按需选择档位（重要）
 
-## 标准流程
+| 档位 | 命令 | 花费 | 什么时候用 |
+| --- | --- | --- | --- |
+| L0 探路 | `agentlink status` | ≈50 tokens | 不确定有没有历史、先看三家有没有数据 |
+| **L1 默认** | `agentlink brief` | ≈1500 tokens | 绝大多数情况：换工具、继续任务、问进度 |
+| L2 详细 | `agentlink brief --full` | ≈6000 tokens | 用户要"看得细一点"、或 L1 明显不够 |
+| L3 深度 | `agentlink digest` → 写 JSON → `agentlink summary apply` | 一次 3–8k，之后**缓存复用** | 长任务交接、跨多天、L1/L2 反复解释同一件事 |
 
-1. **确认命令**：先试 `agentlink --version`。若不在 PATH，读技能同目录的 `LOCAL.md`，
-   那里写着本机启动器的绝对路径，后面用这个路径替代 `agentlink`。
-2. **首次在该项目使用**：`agentlink init`（创建 `.agentlink/`，探测三家历史会话）。
-3. **同步并取上下文**：
+规则：
+
+1. **先 L1，不要一上来就 L2/L3。** L1 里已经有 AI 摘要（若之前生成过）、当前任务、
+   会话卡片、待办、决定。
+2. **不要重复读文件**：`brief` 已经把内容打印给你了，不要再 `cat .agentlink/context.md`。
+3. **没有新对话时用 `--no-sync`**（或直接 `agentlink summary show`）避免重复扫描。
+4. **L3 的摘要会缓存**在 `.agentlink/summary.json`，之后的会话直接读，不必重新花 token。
+   只有 `brief --stats` 显示"落后 ≥6 条"或用户要求更新时才重新整理。
+
+## 二、标准动作（L1）
+
+```
+agentlink brief --stats
+```
+
+读到输出后，用 3–5 行向用户复述：上次在做什么 → 已定结论 → 未完成 → 你准备接着做什么。
+然后**直接开工或先确认一句**，不要为了"对齐"再读一遍原始记录。
+
+需要某个细节时，只取那一段，别拉全量：
+
+```
+agentlink show --session <id 前缀> --role user --limit 20
+```
+
+## 三、L3：让子 agent/你自己写一份交接摘要
+
+只在 L1/L2 不够、或用户要求"把项目状态整理清楚"时做。这一步花 token，但产出会缓存给三家共用。
+
+1. 取材料（**增量**：已有摘要 + 上次之后的新记录，默认封顶 6000 tokens）：
 
    ```
-   agentlink sync      # 抽取新增记录，刷新 .agentlink/context.md
-   agentlink brief     # 打印速览（默认会先 sync）
+   agentlink digest
    ```
 
-4. **读 brief 的输出**，然后用 3–5 行向用户复述：
-   - 上次在做什么（当前任务）
-   - 已经定下的结论/约束
-   - 未完成的待办
-   - 你准备接着做什么（等用户确认或直接开工）
-5. **需要细节**时再查原始记录，不要一开始就把全部历史读进上下文：
+2. 按 schema 写一份 JSON（字段缺失会被容错，但尽量写全）：
+
+   ```json
+   {
+     "version": 1,
+     "project": { "goal": "一句话目标", "status": "当前阶段", "stack": "技术栈" },
+     "state": {
+       "done": ["已完成"], "in_progress": ["正在做"], "blocked": ["卡住/待确认"],
+       "decisions": ["已拍板的决定"], "next": ["下一步"], "risks": ["风险"]
+     },
+     "sessions": [
+       { "agent": "codex", "id": "会话 id", "title": "标题",
+         "one_line": "这条会话干了什么", "outcome": "结论", "open": ["未完成"] }
+     ],
+     "notes_for_next_agent": ["接手者必须知道的坑"]
+   }
+   ```
+
+3. 保存并合并：
 
    ```
-   agentlink show --session <会话 id 前缀> --role user --limit 20
-   agentlink show --role assistant --limit 10
+   agentlink summary apply -f summary.json     # 或 - 从 stdin 读
    ```
 
-## 命令一览
+4. 之后的 `brief` 顶部就会出现「接手摘要（AI 整理）」，三家共用，不再重复计费。
+
+写摘要的纪律：只写**材料里能证实**的内容；不确定的写进 `blocked` 或 `risks`；
+每项 ≤ 60 字；`sessions` 最多 6 条；不要复述原文，要写"结论"。
+
+## 四、命令一览
 
 | 命令 | 作用 |
 | --- | --- |
-| `agentlink init` | 初始化 `.agentlink/`，列出发现的历史会话 |
-| `agentlink sync` | 增量抽取三家记录，刷新 `context.md` |
-| `agentlink brief` | 打印项目速览（默认先 sync） |
-| `agentlink brief --budget 8000` | 控制速览长度（按显示宽度算） |
-| `agentlink status` | 数据源、会话数、上次同步时间 |
-| `agentlink show` | 查看原始记录，可 `--session` / `--agent` / `--role` 过滤 |
-| `agentlink note "..." --kind todo\|decision` | 写一条人工进度，三方共享 |
-| `agentlink handoff --to codex` | 生成给某个 agent 的交接文件 |
-| `agentlink hook` | 在 `AGENTS.md` / `CLAUDE.md` 写入提示段，让新会话自动想起本技能 |
-| `agentlink doctor` | 自检依赖、会话目录、技能安装状态 |
+| `agentlink status` | 数据源、会话数、AI 摘要是否落后（L0） |
+| `agentlink brief` | 项目速览，默认 1800 tokens（L1） |
+| `agentlink brief --full` | 完整速览，约 6000 tokens（L2） |
+| `agentlink brief --budget-tokens N` | 自定义预算 |
+| `agentlink digest` | 给 agent 做摘要的增量材料（L3 第 1 步） |
+| `agentlink summary apply/show/clear` | 应用 / 查看 / 清除 AI 摘要 |
+| `agentlink note "..." --kind todo\|decision` | 写一条判断，三家共享（最便宜的对齐方式） |
+| `agentlink show` | 查原始记录，`--session/--agent/--role/--limit` |
+| `agentlink handoff --to codex` | 生成交接文件 |
+| `agentlink hook` | 在 AGENTS.md / CLAUDE.md 埋提示段，让新会话自动想起本技能 |
+| `agentlink sync` | 只做抽取，不生成速览 |
+| `agentlink doctor` | 自检依赖、会话目录、技能安装 |
 
-## 反向同步：把本轮进展写回去
+首次在某项目使用需要 `agentlink init`（`brief` 也会自动初始化）。
 
-对话本身会被自动读到，但"我觉得这事定了/还没做完"这类判断不会。
-在关键节点写一条，三方都能看到：
+## 五、找不到命令时
 
-```
-agentlink note "导出功能决定只做 CSV，xlsx 下个迭代" --kind decision
-agentlink note "还差分页和错误提示" --kind todo
-```
+读技能同目录的 `LOCAL.md`，里面写着本机启动器与 Python 的绝对路径，
+把它当作 `agentlink` 使用即可。
 
-## 失败与边界
+## 六、失败与边界
 
-- **某家没有会话目录**：说明本机没装或没用过，跳过即可，`status` 会写明。
-- **报 zstandard 缺失**：DSH 的会话是 zstd 压缩的，需要 `python -m pip install zstandard`。
-- **路径对不上**：三家按"会话记录里的工作目录"匹配项目。如果项目改过名或换了盘，
-  用 `agentlink sync --root <旧路径>` 或把新路径加进配置的 `project` 字段。
-- **只读承诺**：本技能只读三家的会话文件，只写项目里的 `.agentlink/`（以及用 `hook`
-  时你显式要求写入的 `AGENTS.md` / `CLAUDE.md`）；不联网、不上传任何内容。
+- **某家没数据**：本机没装/没用过那个工具，跳过，`status` 会写明。
+- **报 zstandard 缺失**：DSH 会话是 zstd 压缩的，`python -m pip install zstandard`。
+- **路径对不上**：按会话记录里的 `cwd` 匹配项目；项目挪过位置就用 `--root <当时路径>`。
+- **只读承诺**：只读三家会话文件，只写项目内 `.agentlink/`（以及你显式要求的
+  `AGENTS.md`/`CLAUDE.md` 提示段）；不联网、不上传。
 
-## 边界提醒
+## 七、事实优先级
 
-速览是"对话摘要"，不是事实来源：涉及代码状态时，仍要看仓库本身（`git log`、文件内容），
-速览里的 git 快照只是辅助。冲突时以仓库为准。
+速览是**对话线索**，不是事实来源。涉及代码状态时以仓库为准（`git log`、文件内容）；
+两者冲突时信仓库，并把冲突写进 `agentlink note`。

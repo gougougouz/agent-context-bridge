@@ -99,9 +99,10 @@ def install(agents: list[str], force: bool = True) -> list[dict]:
         target = skill_home(agent) / SKILL_NAME
         target.mkdir(parents=True, exist_ok=True)
         shutil.copy2(skill_src, target / "SKILL.md")
-        readme = root / "README.md"
-        if readme.exists():
-            shutil.copy2(readme, target / "README.md")
+        for extra in ("README.md", "README.zh-CN.md"):
+            doc = root / extra
+            if doc.exists():
+                shutil.copy2(doc, target / extra)
         launchers = build_launcher(target)
         (target / "LOCAL.md").write_text(local_md(agent, target), encoding="utf-8", newline="\n")
         for extra in ("agentlink.cmd", "agentlink.sh"):

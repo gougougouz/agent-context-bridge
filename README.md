@@ -1,226 +1,256 @@
 # agent-context-bridge
 
-在 **DSH / Codex（ChatGPT）、Claude Code** 之间同步同一个项目的对话上下文与进度。
+**Sync project context and progress across DSH, Codex (ChatGPT) and Claude Code.**
 
-> 5 小时额度用完了想换工具继续，但新 agent 不知道之前聊过什么、项目做到哪一步了 ——
-> 这个技能把三家的会话记录读出来，合成一份可以直接塞进上下文的项目速览。
+[![Tests](https://github.com/gougougouz/agent-context-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/gougougouz/agent-context-bridge/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#)
+[![Agent skill](https://img.shields.io/badge/agent%20skill-DSH%20%7C%20Codex%20%7C%20Claude-8b5cf6.svg)](#-install)
 
----
-
-## 1. 它解决什么问题
-
-同一个项目里同时用三个 agent 时，三家的对话互相看不见：
-
-```
-Codex 里聊完方案  ──►  额度用完  ──►  换 DSH 继续
-                                     ▲
-                                     └──  DSH 只有自己的记录：方案在哪？改到哪了？下一步是什么？
-```
-
-`agentlink` 直接把三家的本地会话记录读出来（不联网、不上传），按项目归并成：
-
-- **当前任务**：最近几条用户请求
-- **各 agent 的最近对话**：每个会话里用户问了什么、助手最后说了什么
-- **待办**：从对话和显式 note 里提取的未完成项
-- **决定与约束**：已经拍板的结论
-- **项目快照**：git 分支、最近提交、未提交改动
-
-换到任一 agent 后，只要它读一次 `.agentlink/context.md`（或跑一次 `agentlink brief`），
-就能接着干。
+English · [简体中文](README.zh-CN.md)
 
 ---
 
-## 2. 快速开始
+You hit the five-hour limit in Codex, switch to DSH — and the new agent knows nothing:
+the plan you settled on, the file you were halfway through, the reason you picked CSV over XLSX.
+Every agent keeps its own transcript in its own directory.
+
+`agentlink` reads all three transcripts locally, scopes them to the current project,
+and produces one compact brief you can drop straight into any agent's context.
+
+```text
+$ agentlink brief
+
+# 项目上下文速览 · payments-service
+> 覆盖 4 个会话 / 812 条记录（DSH、Codex/ChatGPT、Claude Code；2 天前 → 12 分钟前）
+
+## 1. 接手摘要（AI 整理）
+- 项目目标：把结算服务从定时批处理迁到事件驱动
+- 当前状态：核心链路已迁移，回滚开关未做
+- 正在做：幂等键落库；下一步：补对账任务、加回滚开关
+
+## 2. 当前任务（最近的用户请求，新→旧）
+- **12 分钟前**（Codex）：对账任务先别动，先把幂等跑通
+
+## 3. 各会话卡片
+### Codex · 幂等键设计（最后活动 12 分钟前）
+- **诉求**：唯一键用 business_id+date 还是 uuid？
+- **最后结论**：定 business_id+date，冲突时以 Redis 锁兜底
+- **涉及文件**：`src/ledger/idempotency.py`、`migrations/007_idem.sql`
+- **关键命令**：`pytest tests/test_idempotency.py`
+
+## 4. 进行中的任务 / 待办
+- 补对账任务的失败重试
+- 回滚开关（已确认要做，未开工）
+```
+
+## ✨ Why
+
+- **One project, three agents** — DSH, Codex and Claude Code write incompatible formats in
+  incompatible places; you shouldn't have to re-explain your project after every switch.
+- **Token-frugal by default** — a brief costs ~1.5k tokens, and the expensive AI summary is
+  **cached across agents**. Pay once, reuse everywhere.
+- **Two layers** — deterministic facts (git state, tasks, timeline, files touched) always;
+  a structured handoff written by an agent when it's actually worth the tokens.
+- **Local only** — reads transcript files, never uploads anything, no API keys needed.
+- **Incremental** — byte offsets for Codex/Claude, record sequence for DSH; the second sync
+  reads only what appeared since the last one.
+
+## 📦 Install
+
+Requires Python 3.9+. `zstandard` is only needed to read DSH transcripts.
 
 ```powershell
-# 1) 依赖（只需要读 DSH 的 zstd 压缩会话时用得到）
-D:\PythonEnv\python.exe -m pip install zstandard
+# 1) dependency
+python -m pip install zstandard
 
-# 2) 把技能装进三家（复制 SKILL.md + 生成启动器）
-D:\PythonEnv\python.exe -m agentlink install
+# 2) install the skill into all three skill directories
+git clone https://github.com/gougougouz/agent-context-bridge.git
+cd agent-context-bridge
+python -m agentlink install          # add --path to also expose `agentlink` on PATH
+```
 
-# 3) 在项目里初始化并生成第一份速览
+Or run the one-shot installer: `pwsh -ExecutionPolicy Bypass -File install.ps1`.
+
+`agentlink install` copies `SKILL.md` into:
+
+| Agent | Skills directory |
+| --- | --- |
+| DSH | `%USERPROFILE%\.dsh\skills\agent-context-bridge\` |
+| Codex / ChatGPT | `%USERPROFILE%\.codex\skills\agent-context-bridge\` |
+| Claude Code | `%USERPROFILE%\.claude\skills\agent-context-bridge\` |
+
+Each copy gets a launcher and a `LOCAL.md` with absolute paths, so it works even when
+`agentlink` is not on `PATH`. Restart the client (or open a new session) afterwards.
+
+## 🚀 Quick start
+
+```powershell
 cd F:\path\to\your-project
-agentlink init
-agentlink brief
+agentlink init          # create .agentlink/, discover existing sessions
+agentlink brief         # ~1.5k tokens: the thing you paste into an agent
 ```
 
-`brief` 的输出就是交给 agent 的上下文。之后无论在哪个工具里，都可以：
-
-```
-agentlink sync      # 抓取新增对话
-agentlink brief     # 看项目速览
-```
-
----
-
-## 3. 在三个工具里怎么用
-
-### DSH
-
-技能装到 `%USERPROFILE%\.dsh\skills\agent-context-bridge\`，新开会话后技能目录里就能看到。
-直接说「用 agent-context-bridge 同步一下上下文」，或手动跑 `agentlink brief`。
-
-### Codex / ChatGPT（桌面端）
-
-技能装到 `%USERPROFILE%\.codex\skills\agent-context-bridge\`。
-Codex 的会话记录在 `%USERPROFILE%\.codex\sessions\YYYY\MM\DD\rollout-*.jsonl`，
-本工具按 `session_meta.cwd` 判断是否属于当前项目。
-
-### Claude Code
-
-技能装到 `%USERPROFILE%\.claude\skills\agent-context-bridge\`。
-会话记录在 `%USERPROFILE%\.claude\projects\<项目路径转义>\*.jsonl`。
-（本机如果还没装 Claude Code，这个目录会在你首次使用后自动出现，技能已提前装好。）
-
-### 让它自动想起来（可选）
+From that point on, in **any** of the three tools:
 
 ```powershell
-agentlink hook
+agentlink brief --stats          # what to give the agent (+ token count, summary freshness)
+agentlink note "只做 CSV，xlsx 下个迭代" --kind decision
+agentlink hook                   # optional: write a pointer into AGENTS.md / CLAUDE.md
 ```
 
-在项目根的 `AGENTS.md`（DSH、Codex 读）和 `CLAUDE.md`（Claude 读）里写入一段带标记的提示，
-新会话一开始就会看到「先读 `.agentlink/context.md`」。移除用 `agentlink hook --remove`。
+## 🪙 Token economy
 
----
+The skill is designed so a normal invocation stays cheap, and expensive work is reused.
 
-## 4. 命令参考
+| Tier | Command | Cost | When |
+| --- | --- | --- | --- |
+| L0 | `agentlink status` | ~50 tokens | is there anything to sync at all? |
+| **L1** | `agentlink brief` | ~1.5k tokens | default: switching tools, "where were we?" |
+| L2 | `agentlink brief --full` | ~6k tokens | the user wants detail |
+| L3 | `agentlink digest` → agent writes JSON → `agentlink summary apply` | 3–8k **once**, then cached | long handoffs, cross-day work |
 
-| 命令 | 说明 |
+How the cache works: the AI summary lives in `.agentlink/summary.json` and is merged into
+every later brief for free. `digest` is incremental — it hands over the previous summary
+plus only the records that arrived afterwards, so refreshing costs a fraction of a re-read.
+
+Typical steady state: **one L3 pass per milestone, L1 on every switch.**
+
+## 🧰 Commands
+
+| Command | Description |
 | --- | --- |
-| `agentlink init` | 在项目里创建 `.agentlink/`，探测三家历史会话 |
-| `agentlink sync` | 增量抽取新记录，刷新 `context.md`（`--json` 供程序用） |
-| `agentlink brief` | 打印项目速览；默认先 sync，`--no-sync` 只看已有记录 |
-| `agentlink brief --budget 8000` | 限制速览长度（按显示宽度，中文算 2） |
-| `agentlink status` | 三家数据源是否可用、各有几个会话、上次同步时间 |
-| `agentlink show --session <id>` | 查原始记录；支持 `--agent` `--role` `--limit` `--full` |
-| `agentlink note "..." --kind todo` | 写人工进度，三方共享（`note`/`todo`/`decision`/`done`） |
-| `agentlink handoff --to claude` | 生成 `.agentlink/HANDOFF.md` 交接文件 |
-| `agentlink hook` | 写入/刷新 `AGENTS.md`、`CLAUDE.md` 的提示段 |
-| `agentlink install` | 安装技能到三家；`--path` 顺带把 `bin/` 加进用户 PATH |
-| `agentlink doctor` | 自检：Python、zstandard、git、会话目录、技能安装状态 |
+| `agentlink init` | Create `.agentlink/` and list discovered sessions |
+| `agentlink sync` | Pull new records; refresh the rules-based brief |
+| `agentlink brief` | Print the brief (default 1800 tokens) |
+| `agentlink brief --full` / `--budget-tokens N` | Bigger / custom budget |
+| `agentlink brief --stats` | Append token count and AI-summary freshness |
+| `agentlink digest [--full] [--max-tokens N]` | Compact material for an agent to summarize |
+| `agentlink summary apply -f x.json` / `show` / `clear` | Store / inspect / drop the AI summary |
+| `agentlink note "..." --kind note\|todo\|decision\|done` | Write a shared judgement |
+| `agentlink status` | Data sources, sessions, staleness, cached brief size |
+| `agentlink show [--session ID] [--role user]` | Inspect raw records |
+| `agentlink handoff --to claude` | Write `.agentlink/HANDOFF.md` |
+| `agentlink hook [--remove]` | Maintain the `AGENTS.md` / `CLAUDE.md` pointer |
+| `agentlink install [--path]` | Install into the three skill directories |
+| `agentlink doctor` | Self-check dependencies, directories, installs |
 
-通用参数：`--root <项目根>`、`--agent dsh,codex,claude`、`--budget`、`--max-events`。
+Global flags: `--root <dir>`, `--agent dsh,codex,claude`, `--max-events N`.
 
----
+## 🔍 How it works
 
-## 5. 工作原理
-
-```
-~/.dsh/sessions/<--munge-->/session-*/session.v4.jsonl.zstd   ← zstd + JSONL
-~/.codex/sessions/**/rollout-*.jsonl                          ← JSONL，追加写
-~/.claude/projects/<munge>/*.jsonl                            ← JSONL，追加写
+```text
+~/.dsh/sessions/<--munge-->/session-*/session.v4.jsonl.zstd   zstd-compressed JSONL
+~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl                  append-only JSONL
+~/.claude/projects/<munge>/*.jsonl                            append-only JSONL
         │
-        ├─ 按会话头里的 cwd 认领项目（同一台机器上多个项目互不干扰）
-        ├─ 增量读取：字节偏移 / 记录序号（DSH 用 seq，因为 zstd 会整文件重写）
-        ├─ 归一化成 Event(agent, session, role, text, ts, kind)
-        └─ .agentlink/journal.jsonl  →  digest  →  context.md
+        ├─ claim a project by the session's cwd (subdirectories included)
+        ├─ incremental cursors: byte offset, or record `seq` for DSH
+        ├─ normalize → Event(agent, session, role, text, ts, kind)
+        └─ .agentlink/journal.jsonl → digest → context.md (+ optional summary.json)
 ```
 
-几个刻意的设计：
+Deliberate choices:
 
-- **不调用任何大模型**：摘要靠规则（最近请求、结论/待办关键词、git 快照），
-  零成本、可复现、离线可用。
-- **完全本地**：只读三家的会话文件，不发请求，不写云端。
-- **增量**：第二次 `sync` 只读新增的字节/序号，几万条记录的项目也是秒级。
-- **有预算**：速览按显示宽度裁剪，默认 24000（约合 8k tokens），可 `--budget` 调整。
+- **No model calls in the default path.** Facts come from rules: recent asks, keyword
+  extraction for decisions/todos, git snapshot, files and commands touched.
+- **AI is an explicit, cached layer.** The running agent writes the handoff once; the other
+  two read it for free. Nothing is sent to any API by this tool.
+- **Reading is a pure function of the transcripts** — delete `.agentlink/` and it rebuilds.
 
-### 项目状态目录
+### Project state
 
 ```
-<项目根>/.agentlink/
-├── config.json      # 参与同步的 agent、速览预算、git 开关
-├── state.json       # 每个会话文件的读取游标、会话标题、已见记录
-├── journal.jsonl    # 归一化后的全部记录（可删，删了会重建）
-├── notes.jsonl      # `agentlink note` 写入的人工进度
-├── context.md       # 生成的速览（agent 直接读这个）
-└── HANDOFF.md       # `handoff` 生成的交接文件
+<project>/.agentlink/
+├── config.json      # agents, token budgets, git toggle
+├── state.json       # per-file cursors, session titles, seen records
+├── journal.jsonl    # normalized events (rebuildable)
+├── notes.jsonl      # shared judgements from `agentlink note`
+├── summary.json     # cached AI handoff (shared by all three agents)
+├── context.md       # last generated brief
+└── HANDOFF.md       # `agentlink handoff` output
 ```
 
-`.agentlink/.gitignore` 默认忽略该目录，不会把本地对话记录提交到仓库。
+`.agentlink/.gitignore` keeps all of it out of your repository.
 
----
+## 🧠 AI summary schema
 
-## 6. 隐私
+`summary apply` is tolerant — missing fields are ignored, strings are coerced to lists.
 
-- 只在**本机**读取会话文件；除 `pip install` 外没有任何网络请求。
-- `.agentlink/` 默认被 git 忽略，里面的对话摘要不会被推送。
-- 分享项目时如果担心历史泄露，直接删掉 `.agentlink/` 即可，它随时可以重建。
-- 想换一个状态目录（比如放到别的盘）：设置环境变量 `AGENTLINK_STATE_DIR`。
-
----
-
-## 7. 本机安装清单（这台 Windows 机器）
-
-| 内容 | 位置 |
-| --- | --- |
-| Python | `D:\PythonEnv\python.exe`（3.12.15） |
-| `zstandard` 依赖 | 装进 `D:\PythonEnv\Lib\site-packages` |
-| 源码仓库（本仓库） | `F:\development\skills` |
-| 启动器 | `F:\development\skills\bin\agentlink.cmd` |
-| DSH 技能 | `%USERPROFILE%\.dsh\skills\agent-context-bridge\` |
-| Codex 技能 | `%USERPROFILE%\.codex\skills\agent-context-bridge\` |
-| Claude 技能 | `%USERPROFILE%\.claude\skills\agent-context-bridge\` |
-| 项目状态 | `<项目根>\.agentlink\`（每个项目一份） |
-
-不需要 C 盘空间：依赖在 D 盘，代码与启动器在 F 盘。
-
----
-
-## 8. 常见问题
-
-**Q：`agentlink` 提示找不到命令？**
-读安装到技能目录里的 `LOCAL.md`，里面写着本机启动器的绝对路径；或者把
-`F:\development\skills\bin` 加到 PATH（`agentlink install --path` 会自动做）。
-
-**Q：某一家显示"0 个会话"？**
-说明那个项目在该工具里的工作目录和当前目录不一致。常见原因：Codex 里打开的是子目录、
-项目挪过位置。用 `agentlink sync --root <当时的目录>` 试一次，或在该目录下运行。
-
-**Q：报 `zstandard` 缺失？**
-DSH 的会话是 zstd 压缩的：`D:\PythonEnv\python.exe -m pip install zstandard`。
-没装也不影响读取 Codex / Claude。
-
-**Q：速览太长 / 太短？**
-`agentlink brief --budget 12000`。冲突时以仓库和 `git log` 为准，速览只是对话线索。
-
-**Q：会不会把别的项目的数据混进来？**
-不会：只认会话记录里 `cwd` 属于当前项目（含子目录）的会话。
-
----
-
-## 9. 开发
-
-```powershell
-# 直接跑源码
-$env:PYTHONPATH = "F:\development\skills\src"
-D:\PythonEnv\python.exe -m agentlink doctor
-
-# 测试（离线，使用临时目录造的假会话，不碰真实数据）
-D:\PythonEnv\python.exe -m unittest discover -s tests -v
+```json
+{
+  "version": 1,
+  "generated_at": "2026-01-01T12:00:00+08:00",
+  "project": { "goal": "...", "status": "...", "stack": "..." },
+  "state": {
+    "done": [], "in_progress": [], "blocked": [],
+    "decisions": [], "next": [], "risks": []
+  },
+  "sessions": [
+    { "agent": "codex", "id": "...", "title": "...",
+      "one_line": "...", "outcome": "...", "open": [] }
+  ],
+  "notes_for_next_agent": []
+}
 ```
 
-代码结构：
+Rules the skill gives the writing agent: only claims supported by the material, one line per
+item, ≤ 60 characters, and conclusions rather than transcripts.
+
+## 🔒 Privacy
+
+- Reads local transcript files only; no network calls except `pip install`.
+- `.agentlink/` is git-ignored by default — summaries never get committed by accident.
+- Want the state somewhere else? Set `AGENTLINK_STATE_DIR`.
+- Deleting `.agentlink/` removes every trace; nothing is stored outside the project.
+
+## ❓ FAQ
+
+**`agentlink` is not on PATH.**
+Read `LOCAL.md` inside the installed skill folder — it has absolute paths for this machine.
+`agentlink install --path` adds the launcher directory to your user PATH.
+
+**A tool shows "0 sessions".**
+That project's working directory differs from the one recorded in its transcripts (opened a
+subdirectory, or the project moved). Run once with `--root <old path>`.
+
+**`zstandard is not installed`.**
+Only DSH needs it: `python -m pip install zstandard`. Codex and Claude work without it.
+
+**The brief is too long / too short.**
+`agentlink brief --budget-tokens 900` or `--full`. Facts always beat summaries on conflict:
+trust `git log` and the files over the brief.
+
+**Will it mix in other projects?**
+No — a session is claimed only when its recorded `cwd` is inside the current project.
+
+## 🛠 Development
+
+```bash
+python -m unittest discover -s tests -v     # 11 offline tests, temp fixtures only
+PYTHONPATH=src python -m agentlink doctor
+```
 
 ```
 src/agentlink/
-├── cli.py          # 命令行入口
-├── store.py        # .agentlink/ 状态、游标、journal、notes
-├── sources/        # 三家解析器：dsh.py / codex.py / claude.py
-├── digest.py       # 速览生成（分节、关键词提取、预算裁剪）
-├── gitinfo.py      # git 快照
-└── install.py      # 安装到三家技能目录、写提示段
+├── cli.py         # command line entry point
+├── store.py       # .agentlink state, cursors, journal, notes
+├── sources/       # dsh.py / codex.py / claude.py parsers
+├── digest.py      # brief builder (sections, budgets, token estimate)
+├── summary.py     # AI handoff schema, validation, rendering
+├── activity.py    # files/commands touched
+├── gitinfo.py     # git snapshot
+└── install.py     # skill installation + AGENTS.md pointer
 ```
 
----
+## ⚠️ Known limits
 
-## 10. 已知边界
-
-- 会话格式是各家的内部实现，升级客户端后可能变化；解析器对未知记录一律跳过，
-  不会因为多出一种记录类型就崩掉。
-- 只做"文本级"摘要，不做语义理解；重要结论建议顺手 `agentlink note` 写一条。
-- 同一项目如果被复制到两个路径，会被当成两个项目（按 cwd 匹配）。
+- Transcript formats are each vendor's internal business — the parsers skip unknown record
+  types instead of failing, but a breaking change may hide data until updated.
+- The rules-based layer is text-level, not semantic; write a `note` for anything subtle.
+- Two copies of the same project at different paths are treated as two projects.
 
 ## License
 
-MIT
+MIT © Junwen Zhao

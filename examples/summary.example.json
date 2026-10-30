@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "generated_at": "2026-01-15T10:30:00+08:00",
+  "generator": "codex/gpt-5.6",
+  "window": {
+    "from": "2026-01-12T09:00:00+08:00",
+    "to": "2026-01-15T10:20:00+08:00",
+    "events": 412
+  },
+  "project": {
+    "goal": "把结算服务从定时批处理迁移到事件驱动",
+    "status": "核心链路已迁移并通过预发；回滚开关未做",
+    "stack": "Python 3.12 / FastAPI / PostgreSQL / Redis / Kafka"
+  },
+  "state": {
+    "done": [
+      "事件消费骨架与幂等写入落库",
+      "预发环境跑通 3 天流量回放"
+    ],
+    "in_progress": [
+      "幂等键冲突时的 Redis 锁兜底",
+      "对账任务的失败重试"
+    ],
+    "blocked": [
+      "回滚开关方案待定：按商户维度还是全局"
+    ],
+    "decisions": [
+      "幂等键用 business_id+date，不用 uuid（可读、可回溯）",
+      "先单写后双写，不做双写并行期"
+    ],
+    "next": [
+      "补对账任务并接入告警",
+      "实现回滚开关",
+      "压测 2 倍峰值"
+    ],
+    "risks": [
+      "Kafka 消费落后时的补偿策略尚未覆盖"
+    ]
+  },
+  "sessions": [
+    {
+      "agent": "codex",
+      "id": "01a2f3c4",
+      "title": "幂等键设计",
+      "one_line": "讨论唯一键选型与冲突兜底",
+      "outcome": "定 business_id+date，冲突走 Redis 锁",
+      "open": ["锁超时时间的取值还没定"]
+    },
+    {
+      "agent": "claude",
+      "id": "ff31ab2e",
+      "title": "迁移脚本",
+      "one_line": "把 007 迁移拆成可回滚的两步",
+      "outcome": "已合并，预发验证通过",
+      "open": []
+    }
+  ],
+  "notes_for_next_agent": [
+    "别动对账任务：用户要求先把幂等跑通再继续",
+    "回滚开关是上线前的硬要求，方案没定不要自己拍"
+  ]
+}

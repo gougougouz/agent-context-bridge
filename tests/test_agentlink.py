@@ -1,4 +1,4 @@
-"""Offline tests for the three transcript readers and the digest builder.
+﻿"""Offline tests for the three transcript readers and the digest builder.
 
 Run with:  python -m unittest discover -s tests -v
 No real agent data is touched: every fixture is written into a temp directory.
@@ -207,8 +207,8 @@ class AgentlinkTestCase(unittest.TestCase):
         store.append_events(events)
         store.add_note("记得更新 README", kind="todo")
         brief = build_context(store, budget=8000, include_git=False)
-        self.assertIn("## 2. 当前任务", brief)
-        self.assertIn("## 3. 各 agent", brief)
+        self.assertIn("当前任务", brief)
+        self.assertIn("各会话卡片", brief)
         self.assertIn("CSV", brief)
         self.assertIn("记得更新 README", brief)
         self.assertLessEqual(width(brief), 8000)
@@ -223,6 +223,104 @@ class AgentlinkTestCase(unittest.TestCase):
         views = group_sessions(events)
         self.assertEqual(views[0].session, "new")
 
+    # ------------------------------------------------- token budget & AI layer
+
+    def test_brief_respects_token_budget(self):
+        from agentlink.digest import build_context, estimate_tokens
+        from agentlink.model import Event
+
+        store = self.store()
+        events = []
+        for i in range(40):
+            events.append(Event(
+                agent="codex", session="s1", role="user",
+                text=f"第 {i} 条需求：" + "细节" * 40, ts=f"2026-01-01T10:{i:02d}:00+08:00", seq=i))
+            events.append(Event(
+                agent="codex", session="s1", role="assistant",
+                text=f"第 {i} 条回答：" + "结论" * 40, ts=f"2026-01-01T10:{i:02d}:30+08:00", seq=1000 + i))
+        store.append_events(events)
+        small = build_context(store, budget_tokens=400, include_git=False)
+        big = build_context(store, budget_tokens=4000, include_git=False)
+        self.assertLessEqual(estimate_tokens(small), 460)
+        self.assertGreater(estimate_tokens(big), estimate_tokens(small))
+        # the cheap brief still keeps the highest-value sections
+        self.assertIn("当前任务", small)
+
+    def test_summary_apply_and_merge(self):
+        from agentlink import summary as summary_mod
+
+        store = self.store()
+        payload = {
+            "version": 1,
+            "generated_at": "2026-01-02T00:00:00+08:00",
+            "project": {"goal": "做导出功能", "status": "编码中"},
+            "state": {"in_progress": ["分页"], "decisions": ["只做 CSV"]},
+            "sessions": [{"agent": "codex", "id": "s1", "title": "导出",
+                          "one_line": "讨论导出格式", "outcome": "定 CSV"}],
+        }
+        data = summary_mod.save(store, payload)
+        self.assertEqual(data["project"]["goal"], "做导出功能")
+        brief = build_context(store, budget_tokens=3000, include_git=False)
+        self.assertIn("接手摘要", brief)
+        self.assertIn("只做 CSV", brief)
+        self.assertIn("分页", brief)
+
+    def test_digest_incremental_after_summary(self):
+        from agentlink import summary as summary_mod
+        from agentlink.digest import build_digest_payload
+        from agentlink.model import Event
+
+        store = self.store()
+        store.append_events([
+            Event(agent="dsh", session="s1", role="user", text="旧消息",
+                  ts="2026-01-01T10:00:00+08:00", seq=1),
+        ])
+        summary_mod.save(store, {
+            "generated_at": "2026-01-01T10:05:00+08:00",
+            "window": {"from": "2026-01-01T10:00:00+08:00",
+                       "to": "2026-01-01T10:00:00+08:00", "events": 1},
+            "project": {"goal": "旧目标"},
+        })
+        store.append_events([
+            Event(agent="dsh", session="s1", role="user", text="新消息",
+                  ts="2026-01-01T11:00:00+08:00", seq=2),
+        ])
+        payload = build_digest_payload(store, max_tokens=3000, since_last=True)
+        self.assertEqual(payload["mode"], "incremental")
+        self.assertEqual(len(payload["new_events"]), 1)
+        self.assertIn("新消息", payload["new_events"][0]["text"])
+        self.assertIn("旧目标", payload["previous_summary"]["project"]["goal"])
+        full = build_digest_payload(store, max_tokens=3000, since_last=False)
+        self.assertEqual(full["mode"], "full")
+        self.assertTrue(full["sessions"])
+
+    def test_activity_extraction(self):
+        from agentlink.activity import extract_activity, short_path
+        from agentlink.model import Event
+
+        events = [
+            Event(agent="dsh", session="s", role="tool", tool="edit",
+                  text=r"edit: F:\work\demo\src\app.py", kind="command"),
+            Event(agent="dsh", session="s", role="tool", tool="pwsh",
+                  text="pwsh: pytest -q", kind="command"),
+            Event(agent="dsh", session="s", role="tool", tool="pwsh",
+                  text="pwsh: pytest -q", kind="command"),
+            Event(agent="dsh", session="s", role="user", text="跑测试"),
+        ]
+        act = extract_activity(events)
+        self.assertEqual(act["files"][0]["path"], r"F:\work\demo\src\app.py")
+        self.assertEqual(act["commands"], ["pytest -q"])
+        self.assertEqual(short_path(r"F:\work\demo\src\app.py", r"F:\work\demo"), r"src\app.py")
+
+    def test_token_estimator_is_monotonic(self):
+        from agentlink.digest import estimate_tokens
+
+        short = estimate_tokens("你好")
+        long = estimate_tokens("你好" * 200)
+        self.assertLess(short, long)
+        self.assertGreater(short, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

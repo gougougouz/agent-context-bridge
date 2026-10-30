@@ -1,4 +1,4 @@
-"""On-disk state for one project: .agentlink/ inside the project root."""
+﻿"""On-disk state for one project: .agentlink/ inside the project root."""
 
 from __future__ import annotations
 
@@ -21,10 +21,15 @@ DEFAULT_CONFIG = {
     "version": CONFIG_VERSION,
     "agents": ["dsh", "codex", "claude"],
     "digest": {
-        "budget": 24000,          # display width of the generated brief
-        "max_events": 400,        # journal events considered
+        "budget_tokens": 1800,     # default brief size — keep cheap
+        "full_tokens": 6000,       # `brief --full`
+        "budget": 0,               # legacy width budget; 0 = derive from tokens
+        "max_events": 400,         # journal events considered
         "per_session_messages": 6,
-        "recent_days": 60.0,
+        "ai": {
+            "min_new_events": 6,   # only re-summarize after this many new records
+            "max_input_tokens": 6000,  # cap for the digest handed to an agent
+        },
     },
     "git": {"enabled": True, "log_limit": 8},
 }
