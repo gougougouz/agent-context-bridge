@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import re
 import sys
 import unicodedata
@@ -273,3 +274,21 @@ def rel_time(value: str) -> str:
 def debug(msg: str) -> None:
     if os.environ.get("AGENTLINK_DEBUG"):
         print(f"[agentlink] {msg}", file=sys.stderr)
+
+def copy_to_clipboard(text: str) -> bool:
+    """Best-effort clipboard write; False when the platform tool is missing."""
+    if WINDOWS:
+        candidates = [["clip"]]
+    elif sys.platform == "darwin":
+        candidates = [["pbcopy"]]
+    else:
+        candidates = [["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]
+    for cmd in candidates:
+        try:
+            done = subprocess.run(cmd, input=text.encode("utf-8"), check=False,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if done.returncode == 0:
+                return True
+        except (OSError, ValueError):
+            continue
+    return False

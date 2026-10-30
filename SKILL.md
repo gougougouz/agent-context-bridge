@@ -1,4 +1,4 @@
----
+﻿---
 name: agent-context-bridge
 description: 在 DSH / Codex（ChatGPT）/ Claude Code 之间同步同一个项目的对话上下文与进度。当用户切换 agent、额度用完换工具、上下文断了、说"接着之前的做"，或问"之前聊到哪了 / 项目做到哪一步"时使用。
 whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到额度、上下文断了、继续之前的任务、查看其他 agent 的记录。
@@ -19,6 +19,7 @@ whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到�
 
 ```bash
 agentlink brief          # 第一步，也是绝大多数情况下的唯一步
+agentlink brief --copy   # 直接进剪贴板，省得选中复制
 ```
 
 1. 读输出，用 3–5 行向用户复述：上次在做什么 → 已定结论 → 还没做完的 → 你准备先做哪件。
@@ -80,7 +81,8 @@ agentlink note "对账任务等幂等跑通再动" --kind todo
 | `agentlink status` | 有没有数据、摘要新不新鲜（很便宜，先看这个也行） |
 | `agentlink sync` | 只抽取新记录 |
 | `agentlink handoff --to claude` | 生成交接文件给指定工具 |
-| `agentlink hook` | 往 `AGENTS.md` / `CLAUDE.md` 埋提示段，新会话自动想起本技能 |
+| `agentlink init --hook` | 首次初始化并顺手埋提示段，新会话自动想起本技能 |
+| `agentlink hook` | 只埋/刷新提示段 |
 | `agentlink doctor` | 依赖、会话目录、安装状态自检 |
 | `--lang en` / `--lang zh` | 换输出语言 |
 

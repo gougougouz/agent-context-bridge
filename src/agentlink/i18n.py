@@ -27,6 +27,10 @@ _STRINGS = {
         "> 生成于 {ts}；覆盖 {sessions} 个会话 / {events} 条记录（{agents}；{span}）。",
         "> Generated {ts}; {sessions} sessions / {events} records ({agents}; {span}).",
     ),
+    "brief.coverage.one": (
+        "> 生成于 {ts}；覆盖 {sessions} 个会话 / {events} 条记录（{agents}；{span}）。",
+        "> Generated {ts}; {sessions} session / {events} records ({agents}; {span}).",
+    ),
     "brief.purpose": (
         "> 供接手者对齐：当前任务、AI 摘要、时间线、会话卡片、待办与决定。",
         "> What a new agent needs: current asks, the handoff summary, timeline, "
@@ -36,6 +40,44 @@ _STRINGS = {
         "> 细节：`agentlink show --session <id>`；刷新：`agentlink sync`。",
         "> Details: `agentlink show --session <id>`; refresh: `agentlink sync`.",
     ),
+    "brief.copied": ("已复制到剪贴板（{n} 字符）", "Copied to the clipboard ({n} chars)"),
+    "brief.copy_failed": (
+        "复制失败：这台机器上没有 clip / pbcopy / wl-copy",
+        "Copy failed: no clip / pbcopy / wl-copy on this machine",
+    ),
+    "brief.saved": ("已写入 {path}", "Written to {path}"),
+    "init.header": ("已初始化状态目录：{dir}", "Initialised state dir: {dir}"),
+    "init.agent": ("  - {agent}：{sessions} 个会话，{events} 条记录",
+                   "  - {agent}: {sessions} sessions, {events} records"),
+    "init.totals": ("合计 {sessions} 个会话、{events} 条记录", "Total: {sessions} sessions, {events} records"),
+    "init.empty": (
+        "这个项目还没有历史会话（在那个工具里聊过之后，`agentlink sync` 会补上）。",
+        "No transcripts for this project yet (`agentlink sync` will pick them up later).",
+    ),
+    "init.hook": ("已写入提示段：{path}", "Pointer written: {path}"),
+    "doctor.skill.line": (
+        "{label:<14} 技能 {state}  {path}",
+        "{label:<14} skill {state}  {path}",
+    ),
+    "doctor.dir.line": (
+        "{label:<14} 对话 {state}  {path}",
+        "{label:<14} transcripts {state}  {path}",
+    ),
+    "doctor.dir": ("会话目录", "transcripts"),
+    "doctor.dir.missing": ("缺失", "missing"),
+    "init.next.hook": (
+        "下一步：`agentlink brief`。提示段已就位，新会话会自己读速览。",
+        "Next: `agentlink brief`. The pointer is in place, so new sessions will read the brief.",
+    ),
+    "init.next": (
+        "下一步：`agentlink brief` 看一眼项目上下文，愿意的话再 `agentlink hook`。",
+        "Next: run `agentlink brief`, and `agentlink hook` if you want new sessions to notice it.",
+    ),
+    "doctor.skill": ("技能 {dir} → {state}", "skill {dir} → {state}"),
+    "doctor.skill.ok": ("已安装", "installed"),
+    "doctor.skill.missing": ("未安装", "missing"),
+    "doctor.ready": ("结论：环境就绪", "Result: ready"),
+    "doctor.missing": ("结论：还有依赖缺失，见上面标记", "Result: some dependencies are missing (see above)"),
     "brief.footer": (
         '写进度：`agentlink note "..." --kind todo|decision`　'
         "整理摘要：`agentlink digest` → 写 JSON → `agentlink summary apply`。",

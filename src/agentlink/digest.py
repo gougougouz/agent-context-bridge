@@ -16,7 +16,7 @@ from pathlib import Path
 from . import summary as summary_mod
 from .activity import extract_activity, short_path
 from .gitinfo import snapshot
-from .i18n import t
+from .i18n import lang, t
 from .model import AGENT_LABELS, Event
 from .store import Store
 from .util import iso_to_dt, now_iso, read_json, rel_time, truncate_width, width
@@ -427,11 +427,12 @@ def _assemble(store: Store, blocks: list[Block], budget: int, events: list[Event
     else:
         span = t("span.none")
 
+    one_session = len(views) == 1 and lang() == "en"
     header = [
         t("brief.title", name=Path(store.root).name),
         "",
-        t("brief.coverage", ts=now_iso(), sessions=len(views), events=len(events),
-          agents=covered, span=span),
+        t("brief.coverage.one" if one_session else "brief.coverage", ts=now_iso(),
+          sessions=len(views), events=len(events), agents=covered, span=span),
         t("brief.purpose"),
         t("brief.hint"),
         "",

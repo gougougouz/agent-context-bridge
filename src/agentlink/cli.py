@@ -43,6 +43,10 @@ def _out(text: str = "") -> None:
     sys.stdout.write(text + "\n")
 
 
+def _err(text: str = "") -> None:
+    sys.stderr.write(text + "\n")
+
+
 def _setup_stdio() -> None:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -83,19 +87,28 @@ def _agent_names(value: str | None) -> list[str]:
 
 def cmd_init(args) -> int:
     store = open_store(args)
-    sessions = discover_sessions(store)
-    per_agent: dict[str, int] = {}
-    for s in sessions:
-        per_agent[s.agent] = per_agent.get(s.agent, 0) + 1
-    _out(f"已初始化状态目录：{store.dir}")
-    if per_agent:
-        _out("发现历史会话：")
-        for agent, count in sorted(per_agent.items()):
-            _out(f"  - {AGENT_LABELS.get(agent, agent)}：{count} 个")
+    results = sync_sources(store, agents=_agent_names(getattr(args, "agent", None)))
+    sessions = sum(r.sessions for r in results)
+    new_events = sum(r.new_events for r in results)
+    _out(t("init.header", dir=store.dir))
+    if sessions:
+        for r in results:
+            if not r.sessions:
+                continue
+            _out(t("init.agent", agent=AGENT_LABELS.get(r.agent, r.agent),
+                   sessions=r.sessions, events=r.new_events))
+        _out(t("init.totals", sessions=sessions, events=new_events))
     else:
-        _out("暂未发现本项目的历史会话（先在该项目里和其他 agent 聊几句，再运行 agentlink sync）。")
+        _out(t("init.empty"))
+    if getattr(args, "hook", False):
+        from .install import ensure_path_entry  # noqa: F401  (keeps import surface stable)
+
+        touched = write_pointers(store.root, store.state.get("last_sync", ""))
+        _out("")
+        for path in touched:
+            _out(t("init.hook", path=path))
     _out("")
-    _out("下一步：`agentlink sync` 抽取记录，`agentlink brief` 生成上下文速览。")
+    _out(t("init.next.hook") if getattr(args, "hook", False) else t("init.next"))
     return 0
 
 
@@ -172,6 +185,12 @@ def cmd_brief(args) -> int:
         from .util import atomic_write_text
 
         atomic_write_text(Path(args.out), context)
+        _err(t("brief.saved", path=args.out))
+    if getattr(args, "copy", False):
+        from .util import copy_to_clipboard
+
+        ok_copy = copy_to_clipboard(context)
+        _err(t("brief.copied", n=len(context)) if ok_copy else t("brief.copy_failed"))
     tokens = estimate_tokens(context)
     if args.json:
         views = group_sessions(events)
@@ -193,8 +212,8 @@ def cmd_brief(args) -> int:
             ai_state = t("cli.stats.ai_fresh", n=len(pending))
         else:
             ai_state = t("cli.stats.ai_ok")
-        _out("")
-        _out(t("cli.stats", tokens=tokens, ai=ai_state, path=store.context_path))
+        _err("")
+        _err(t("cli.stats", tokens=tokens, ai=ai_state, path=store.context_path))
     return 0
 
 
@@ -248,7 +267,8 @@ def cmd_summary(args) -> int:
     except json.JSONDecodeError as exc:
         raise SystemExit(f"JSON 解析失败：{exc}") from None
     data = summary_mod.save(store, payload)
-    pending, count = summary_mod.needs_refresh(store, data)
+    pending, count = summary_mod.needs_refresh(
+        store, data, int((store.config["digest"].get("ai") or {}).get("min_new_events") or 6))
     _out(f"已保存 AI 摘要：{summary_mod.path_for(store)}")
     _out(f"覆盖：{data['window']['from'] or '?'} → {data['window']['to'] or '?'}；"
          f"会话 {len(data['sessions'])} 个；待办 {len(data['state']['in_progress'])} 项")
@@ -295,7 +315,8 @@ def cmd_status(args) -> int:
     _out(t("cli.status.records", events=stats["events"], sessions=stats["sessions"], sync=last))
     ai = summary_mod.load(store)
     if ai:
-        pending, count = summary_mod.needs_refresh(store, ai)
+        pending, count = summary_mod.needs_refresh(
+            store, ai, int((store.config["digest"].get("ai") or {}).get("min_new_events") or 6))
         verdict = t("cli.status.suggest") if pending else t("cli.status.enough")
         _out(t("cli.status.ai", when=rel_time(ai.get("generated_at") or ""),
                n=count, verdict=verdict))
@@ -415,8 +436,11 @@ def cmd_doctor(args) -> int:
         src = SOURCES[name]
         home = skill_home(name)
         skill = home / SKILL_NAME / "SKILL.md"
-        _out(f"{AGENT_LABELS.get(name, name):<14} 会话目录 {'OK ' if src.available() else '缺失'} "
-             f"{src.root_dir()}  |  技能 {'已安装' if skill.exists() else '未安装'}")
+        state = t("doctor.skill.ok") if skill.exists() else t("doctor.skill.missing")
+        label = AGENT_LABELS.get(name, name)
+        _out(t("doctor.skill.line", label=label, state=state, path=home / SKILL_NAME))
+        available = "OK" if src.available() else t("doctor.dir.missing")
+        _out(t("doctor.dir.line", label="", state=available, path=src.root_dir()))
     root = resolve_root(getattr(args, "root", None))
     store = Store(root)
     _out("")
@@ -449,8 +473,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--budget", type=int, help="速览的最大显示宽度（一般不直接用，见 --budget-tokens）")
         p.add_argument("--max-events", type=int, help="参与摘要的最近记录条数")
 
-    p = sub.add_parser("init", help="在项目里初始化 .agentlink 并探测历史会话")
+    p = sub.add_parser("init", help="在项目里初始化 .agentlink，抽取历史会话")
     common(p)
+    p.add_argument("--hook", action="store_true",
+                   help="同时在 AGENTS.md / CLAUDE.md 写入提示段")
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("sync", help="把三家 agent 的新记录抽到 .agentlink/ 并刷新 context.md")
@@ -469,6 +495,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--full", action="store_true", help="用完整预算（默认 6000 tokens）")
     p.add_argument("--stats", action="store_true", help="末尾附带 token 与摘要状态")
     p.add_argument("--out", help="同时把速览写到这个文件")
+    p.add_argument("--copy", action="store_true", help="把速览复制到剪贴板")
     p.add_argument("--since", help="只看这段时间：3d / 12h / 2026-10-28 / today")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_brief)
