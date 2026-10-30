@@ -39,12 +39,12 @@ $ agentlink brief
 一句话概括：
 
 - 读 `~/.dsh`、`~/.codex`、`~/.claude`，**从不写入**这些目录
-- 一条命令，没有常驻进程、不用账号、不需要 API key、不上传任何东西
-- 每次切换约 3k tokens；可选的缓存摘要会让之后的切换更准且仍然免费
+- 没有常驻进程、不用账号、没有 key、不上传任何东西
+- 每次切换约 3k tokens；缓存摘要让之后的切换更准，且不再花钱
 
 ## 安装
 
-一条命令。不需要 git、不需要 clone、不需要虚拟环境。
+一条命令。
 
 ```powershell
 # Windows，PowerShell
@@ -56,15 +56,15 @@ irm https://raw.githubusercontent.com/gougougouz/agent-context-bridge/main/insta
 curl -fsSL https://raw.githubusercontent.com/gougougouz/agent-context-bridge/main/install.sh | bash
 ```
 
-装完重启 DSH / Codex / Claude，或者新开一个会话，让它们认出这个技能。
+装完重启这些工具（或新开会话），让它们认出技能。
 
 **也可以直接甩给 agent。** 把下面这段连同仓库链接发给任何一个能执行命令的 agent：
 
 > 帮我装一下这个 skill：https://github.com/gougougouz/agent-context-bridge
 > 按 `INSTALL.md` 来，装完告诉我装到哪了。
 
-[INSTALL.md](INSTALL.md) 就是为这个场景写的：检查 Python、按系统选命令、装完验证，
-网络受限、家目录只读、PATH 不能改的处理也都写在里面。
+[INSTALL.md](INSTALL.md) 就是为这个场景写的：查 Python、按系统选命令、装完验证，
+以及网络或 PATH 受限时怎么办。
 
 | 装了什么 | 在哪 |
 | --- | --- |
@@ -77,18 +77,15 @@ macOS/Linux 用 `AGENTLINK_HOME=...`；各个开关和卸载步骤都在 [INSTAL
 
 ## 怎么用
 
-三种入口，结果一样。
-
 | 在哪 | 做什么 |
 | --- | --- |
 | **聊天框里** | 说一句"接着之前的做" / "刚才聊到哪了" —— agent 自己跑 `agentlink brief` 然后继续 |
 | **Codex 里显式点名** | 输入 `$`，选 **agent-context-bridge**；或者直接写"用 agent-context-bridge…" |
 | **终端里** | `cd 项目 && agentlink brief`（加 `--copy` 直接进剪贴板） |
 
-命令不需要背，也不需要在聊天框里敲：技能自带描述，聊到换工具、额度、上下文断了的时候，
-agent 会自己想起来用。
+技能自带描述，聊到换工具、上下文断了的时候，agent 会自己想起来用。
 
-第一次在一个项目里用，只有这一步：
+第一次在一个项目里用：
 
 ```console
 $ agentlink init
@@ -99,7 +96,7 @@ $ agentlink init
 ```
 
 `agentlink init --hook` 会顺手往 `AGENTS.md` / `CLAUDE.md` 写一小段提示，
-让新会话自己先读速览，而不是等着被问。
+让新会话自己先读速览。
 
 ## 速览里有什么
 
@@ -147,9 +144,9 @@ flowchart LR
 | L2 | `agentlink brief --full` | ~8k | 想连时间线、决定、回放一起看 |
 | L3 | `digest` → JSON → `summary apply` | 3–8k，一次 | 长任务交接、跨天工作 |
 
-`digest` 交给 agent 的是「上一版摘要 + 之后新增的记录」，所以刷新只需要重读一小部分。
-什么时候刷新？`brief --stats` 说摘要落后了再刷，不用每次切换都刷。
-格式和校验规则在 [docs/summary-schema.md](docs/summary-schema.md)。
+`digest` 交给 agent 的是「上一版摘要 + 之后新增的记录」，刷新只重读一小部分 ——
+`brief --stats` 说摘要落后了再刷，不用每次切换都刷。格式与校验：
+[docs/summary-schema.md](docs/summary-schema.md)。
 
 ## 命令
 
@@ -196,9 +193,8 @@ flowchart LR
 
 ## 边界
 
-- **对原始记录只读。** `~/.dsh`、`~/.codex`、`~/.claude` 里的东西一个字节都不改。
-- **只在本机。** 装完不再联网，没有遥测，不需要 API key。状态在 `.agentlink/` 里，
-  被 git 忽略、随时可删 —— 删掉之后下次 `brief` 会重建。
+- **默认就是私密的。** 原始记录只读；装完不联网、没有遥测、没有 key。
+  状态在 `.agentlink/` 里，被 git 忽略、随时可删。
 - **读的是文字，不是语义。** 没人写下来的决定抓不到，这正是 `agentlink note` 的用途。
 - **格式归各家所有。** 不认识的记录会跳过而不是崩溃，但上游改了格式，可能暂时读不到新数据。
 - **一个路径一个项目。** 同一个仓库放在两个路径会被当成两个项目，除非把旧路径加进 `roots`。
@@ -214,8 +210,6 @@ PYTHONPATH=src python -m agentlink doctor
 CI 在 Ubuntu 和 Windows 上跑 Python 3.9 与 3.12。测试不碰真实会话：每个用例把合成数据
 写进临时 home 目录，其中一条故意写成坏行，用来证明读取不会因此中断。
 
-仓库是自包含的，可以和别的技能并排放 —— 现在这份在
-`F:\development\skills\agent-context-bridge`。解析规则、状态目录、怎么接第四家工具：
-[docs/internals.md](docs/internals.md)。
+解析规则、状态目录、怎么接第四家工具：[docs/internals.md](docs/internals.md)。
 
 MIT © Junwen Zhao

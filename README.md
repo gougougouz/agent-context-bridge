@@ -41,12 +41,12 @@ $ agentlink brief
 At a glance:
 
 - reads `~/.dsh`, `~/.codex` and `~/.claude` — never writes to them
-- one command, no daemon, no account, no API key, nothing uploaded
-- about 3k tokens per switch; an optional cached summary makes later switches sharper for free
+- no daemon, no account, no key, nothing uploaded
+- ~3k tokens per switch; a cached summary sharpens later switches for free
 
 ## Install
 
-One command. No git, no clone, no virtualenv.
+One command.
 
 ```powershell
 # Windows, PowerShell
@@ -58,15 +58,15 @@ irm https://raw.githubusercontent.com/gougougouz/agent-context-bridge/main/insta
 curl -fsSL https://raw.githubusercontent.com/gougougouz/agent-context-bridge/main/install.sh | bash
 ```
 
-Restart DSH / Codex / Claude, or open a new session, so they notice the new skill.
+Restart the tools (or open a new session) so they pick up the skill.
 
 **Or hand it to an agent.** Paste this into any agent that can run commands, with the link:
 
 > Install this skill for me: https://github.com/gougougouz/agent-context-bridge — follow
 > `INSTALL.md`, then tell me where it landed.
 
-[INSTALL.md](INSTALL.md) is written for that job: it checks Python, picks the command for the
-OS, verifies the install, and covers restricted network, read-only home and PATH cases.
+[INSTALL.md](INSTALL.md) is written for that job: Python check, per-OS command,
+verification, and what to do when the network or PATH is restricted.
 
 | What it creates | Where |
 | --- | --- |
@@ -79,19 +79,16 @@ somewhere else; [INSTALL.md](INSTALL.md) has the switches and the uninstall step
 
 ## Use it
 
-Three ways in, same result.
-
 | Where | What you do |
 | --- | --- |
 | **In the chat box** | say "接着之前的做" / "where were we?" — the agent runs `agentlink brief` and continues |
 | **In Codex, explicitly** | type `$`, pick **agent-context-bridge**; or write "use agent-context-bridge..." |
 | **In a terminal** | `cd project && agentlink brief` (add `--copy` to put it on the clipboard) |
 
-You do not type commands into the chat box and you do not have to remember them: the skill
-carries its own description, so the agent reaches for it when the conversation turns to
-switching, quotas or lost context.
+The skill carries its own description, so the agent reaches for it when the conversation
+turns to switching tools or lost context.
 
-First time in a project — this is the only setup step:
+First time in a project:
 
 ```console
 $ agentlink init
@@ -101,8 +98,8 @@ Initialised state dir: ~/code/payments-service/.agentlink
 Total: 9 sessions, 2319 records
 ```
 
-`agentlink init --hook` also writes a short pointer into `AGENTS.md` / `CLAUDE.md`, so a new
-session reads the brief on its own instead of waiting to be asked.
+`agentlink init --hook` also writes a pointer into `AGENTS.md` / `CLAUDE.md`, so a new
+session reads the brief on its own.
 
 ## What is in the brief
 
@@ -151,10 +148,9 @@ flowchart LR
 | L2 | `agentlink brief --full` | ~8k | you want timeline, decisions and replay |
 | L3 | `digest` → JSON → `summary apply` | 3–8k, once | long hand-off, multi-day work |
 
-`digest` hands the agent the previous summary plus only the records added since, so a refresh
-costs a fraction of a re-read. Refresh when `brief --stats` says the summary is behind, not on
-every switch. The schema and the validation rules live in
-[docs/summary-schema.md](docs/summary-schema.md).
+`digest` passes the agent the previous summary plus only what is new, so a refresh costs a
+fraction of a re-read — worth doing when `brief --stats` says the summary is behind, not on
+every switch. Schema and validation: [docs/summary-schema.md](docs/summary-schema.md).
 
 ## Commands
 
@@ -201,9 +197,8 @@ Global flags: `--root DIR`, `--agent dsh,codex,claude`, `--lang en|zh`.
 
 ## Boundaries
 
-- **Read-only on transcripts.** Nothing under `~/.dsh`, `~/.codex` or `~/.claude` is modified.
-- **Local only.** No network after installation, no telemetry, no API key. State stays in
-  `.agentlink/`, which is git-ignored and disposable — delete it and the next `brief` rebuilds.
+- **Private by construction.** Transcripts are read-only; no network after install, no
+  telemetry, no key. State sits in `.agentlink/`, git-ignored and disposable.
 - **Text, not meaning.** The rules layer cannot infer a decision nobody wrote down; that is
   what `agentlink note` is for.
 - **Formats belong to the vendors.** Unknown record types are skipped rather than fatal, but an
@@ -223,8 +218,7 @@ CI runs the suite on Ubuntu and Windows, Python 3.9 and 3.12. Tests never touch 
 transcripts: each writes synthetic sessions into a temporary home directory, including a
 corrupt line to prove reads survive it.
 
-The checkout is self-contained, so several skills can sit side by side — this copy lives in
-`F:\development\skills\agent-context-bridge`. Parsing rules, state layout and how to add a
-fourth agent: [docs/internals.md](docs/internals.md).
+Parsing rules, state layout and how to add a fourth agent:
+[docs/internals.md](docs/internals.md).
 
 MIT © Junwen Zhao
