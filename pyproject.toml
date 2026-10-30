@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentlink"
+version = "0.1.0"
+description = "Sync project context and progress across DSH, Codex (ChatGPT) and Claude Code"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Junwen Zhao" }]
+keywords = ["agents", "context", "handoff", "codex", "claude", "dsh"]
+dependencies = ["zstandard>=0.21"]
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+agentlink = "agentlink.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

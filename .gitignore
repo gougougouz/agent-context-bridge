@@ -1,0 +1,16 @@
+# agentlink runtime state (per project) — never commit transcripts
+.agentlink/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
