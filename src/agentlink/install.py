@@ -122,6 +122,11 @@ def install(agents: list[str], force: bool = True) -> list[dict]:
             doc = root / extra
             if doc.exists():
                 shutil.copy2(doc, target / extra)
+        docs_src = root / "docs"
+        if docs_src.is_dir():  # README links into docs/, keep them valid after copying
+            for doc in sorted(docs_src.glob("*.md")):
+                (target / "docs").mkdir(exist_ok=True)
+                shutil.copy2(doc, target / "docs" / doc.name)
         launchers = build_launcher(target)
         (target / "LOCAL.md").write_text(local_md(agent, target), encoding="utf-8", newline="\n")
         for extra in ("agentlink.cmd", "agentlink.sh"):
