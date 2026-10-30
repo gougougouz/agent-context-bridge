@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Install agentlink (the agent-context-bridge skill) on Windows with one command.
 
@@ -54,7 +54,7 @@ function Fail($msg) {
 
 Write-Host ""
 Write-Host "  agent-context-bridge" -ForegroundColor White -NoNewline
-Write-Host "  ·  sync project context across DSH / Codex / Claude" -ForegroundColor DarkGray
+Write-Host "  |  sync project context across DSH / Codex / Claude" -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------- python
 Head "1/4  python"

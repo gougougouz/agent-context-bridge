@@ -23,7 +23,7 @@ say() { printf '  %s\n' "$1"; }
 head() { printf '\n\033[36m%s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m  x %s\033[0m\n' "$1" >&2; exit 1; }
 
-printf '\n  \033[1magent-context-bridge\033[0m  ·  sync project context across DSH / Codex / Claude\n'
+printf '\n  \033[1magent-context-bridge\033[0m  |  sync project context across DSH / Codex / Claude\n'
 
 # ------------------------------------------------------------------ python
 head "1/4  python"
@@ -74,7 +74,7 @@ if [ "${AGENTLINK_NO_DEPS:-0}" != "1" ]; then
   else
     say "installing zstandard (reads compressed DSH sessions)"
     "$PY" -m pip install --quiet --disable-pip-version-check zstandard \
-      || say "! pip failed — Codex/Claude still work; DSH needs: $PY -m pip install zstandard"
+      || say "! pip failed - Codex/Claude still work; DSH needs: $PY -m pip install zstandard"
   fi
 fi
 
