@@ -128,19 +128,19 @@ class SessionView:
         if len(users) > 2:
             asks.append(truncate_width(users[-1].text.replace("\n", " "), 150))
         if asks:
-            lines.append(f"- **{t('card.ask')}**: " + t("sep.semi").join(asks))
+            lines.append(f"- **{t('card.ask')}**{t('sep.colon')}" + t("sep.semi").join(asks))
 
         if assistants:
             last = truncate_width(assistants[-1].text.replace("\n", " "), 240)
-            lines.append(f"- **{t('card.conclusion')}**: {last}")
+            lines.append(f"- **{t('card.conclusion')}**{t('sep.colon')}{last}")
 
         files = self.files()
         if files:
-            lines.append(f"- **{t('card.files')}**: " + t("sep.list").join(f"`{f}`" for f in files))
+            lines.append(f"- **{t('card.files')}**{t('sep.colon')}" + t("sep.list").join(f"`{f}`" for f in files))
 
         cmds = self.commands()
         if cmds:
-            lines.append(f"- **{t('card.commands')}**: " + t("sep.semi").join(f"`{c}`" for c in cmds))
+            lines.append(f"- **{t('card.commands')}**{t('sep.colon')}" + t("sep.semi").join(f"`{c}`" for c in cmds))
 
         if not asks and not assistants:
             lines.append(f"- {t('card.nochat')}")
@@ -164,7 +164,8 @@ class SessionView:
                 continue
             last_text = ev.text.strip()
             who = t("role.user") if ev.role == "user" else t("role.assistant")
-            lines.append(f"- **{who}**（{rel_time(ev.ts)}）：{truncate_width(ev.text.replace(chr(10), ' '), 220)}")
+            lines.append(t("replay.line", who=who, t=rel_time(ev.ts),
+                           text=truncate_width(ev.text.replace(chr(10), " "), 220)))
         return lines
 
     def digest_card(self) -> dict:
@@ -282,8 +283,9 @@ def _current_tasks(events: list[Event], limit: int = 3) -> list[str]:
         if len(text) < 3 or text in seen:
             continue
         seen.add(text)
-        lines.append(f"- **{rel_time(ev.ts)}**（{AGENT_LABELS.get(ev.agent, ev.agent)}）："
-                     f"{truncate_width(text, 280)}")
+        lines.append(t("task.line", t=rel_time(ev.ts),
+                       agent=AGENT_LABELS.get(ev.agent, ev.agent),
+                       text=truncate_width(text, 280)))
         if len(lines) >= limit:
             break
     return lines
@@ -315,17 +317,17 @@ class Block:
 
 def _snapshot_block(store: Store) -> Block:
     info = snapshot(store.root, log_limit=store.config["git"].get("log_limit", 8))
-    lines = [f"- {t('snap.root')}: `{store.root}`"]
+    lines = [f"- {t('snap.root')}{t('sep.colon')}`{store.root}`"]
     if info.get("is_repo"):
         lines.append(f"- Git：`{info.get('branch') or '?'}` @ `{info.get('head') or '?'}`")
         if info.get("commits"):
-            lines.append(f"- {t('snap.commits')}:")
+            lines.append(f"- {t('snap.commits')}{t('sep.colon')}")
             for c in info["commits"][:4]:
                 lines.append(f"  - `{c['hash']}` {c['date']} {truncate_width(c['subject'], 90)}")
         dirty = info.get("dirty") or []
         if dirty:
             shown = "、".join(f"`{d[3:] if len(d) > 3 else d}`" for d in dirty[: SECTION_LIMITS["dirty"]])
-            lines.append(f"- {t('snap.dirty', n=len(dirty))}: {shown}")
+            lines.append(f"- {t('snap.dirty', n=len(dirty))}{t('sep.colon')}{shown}")
         else:
             lines.append(f"- {t('snap.clean')}")
     else:
@@ -418,7 +420,7 @@ def build_sections(
 def _assemble(store: Store, blocks: list[Block], budget: int, events: list[Event],
               views: list[SessionView]) -> str:
     covered_agents = sorted({e.agent for e in events})
-    covered = t("sep.list").join(AGENT_LABELS.get(a, a) for a in covered_agents) or t("empty.none")
+    covered = t("sep.list").join(AGENT_LABELS.get(a, a) for a in covered_agents) or t("empty.none_plain")
     if events:
         first = min((e.ts for e in events if e.ts), default="")
         span = f"{rel_time(first)} → {rel_time(events[-1].ts)}" if events[-1].ts else rel_time(first)

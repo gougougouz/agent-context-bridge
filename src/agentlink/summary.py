@@ -166,11 +166,11 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
 
     project = data.get("project") or {}
     if project.get("goal"):
-        lines.append(f"- **{t('ai.goal')}**: {project['goal']}")
+        lines.append(f"- **{t('ai.goal')}**{t('sep.colon')}{project['goal']}")
     if project.get("status"):
-        lines.append(f"- **{t('ai.status')}**: {project['status']}")
+        lines.append(f"- **{t('ai.status')}**{t('sep.colon')}{project['status']}")
     if project.get("stack"):
-        lines.append(f"- **{t('ai.stack')}**: {project['stack']}")
+        lines.append(f"- **{t('ai.stack')}**{t('sep.colon')}{project['stack']}")
     if any(project.values()):
         lines.append("")
 
@@ -205,7 +205,7 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
                 text += f" → {truncate_width(outcome, 120)}"
             lines.append(text)
             for open_item in (item.get("open") or [])[:2]:
-                lines.append(f"  - {t('ai.open')}: {truncate_width(open_item, 140)}")
+                lines.append(f"  - {t('ai.open')}{t('sep.colon')}{truncate_width(open_item, 140)}")
         lines.append("")
 
     notes = data.get("notes_for_next_agent") or []

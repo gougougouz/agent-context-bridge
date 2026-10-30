@@ -1,4 +1,4 @@
-"""Tiny message catalog: Chinese and English, chosen once per process.
+﻿"""Tiny message catalog: Chinese and English, chosen once per process.
 
 Language: AGENTLINK_LANG=zh|en, otherwise the system locale decides
 (Chinese locale → zh, anything else → en).
@@ -54,6 +54,16 @@ _STRINGS = {
     "sec.replay": ("对话回放（节选）", "Replay (excerpts)"),
     # separators and misc
     "sep.semi": ("；", "; "),
+    "sep.colon": ("：", ": "),
+    "empty.none_plain": ("暂无", "none"),
+    "task.line": (
+        "- **{t}**（{agent}）：{text}",
+        "- **{t}** ({agent}): {text}",
+    ),
+    "replay.line": (
+        "- **{who}**（{t}）：{text}",
+        "- **{who}** ({t}): {text}",
+    ),
     "sep.list": ("、", ", "),
     "span.none": ("无记录", "no records"),
     "card.heading": ("{head}（最后活动 {t}）", "{head} (last active {t})"),
@@ -99,7 +109,7 @@ _STRINGS = {
     "snap.nogit": ("不是 Git 仓库（进度以会话与 note 为准）", "not a git repo (progress lives in transcripts and notes)"),
     # ai summary
     "ai.generated": ("生成于 {t}", "Generated {t}"),
-    "ai.source": ("来源：{g}", "by {g}"),
+    "ai.source": ("；来源：{g}", "; by {g}"),
     "ai.stale": ("；**此后有新对话，建议重新整理**", "; **newer records exist — refresh when convenient**"),
     "ai.unknown_time": ("生成时间未知", "generation time unknown"),
     "ai.goal": ("项目目标", "Goal"),
