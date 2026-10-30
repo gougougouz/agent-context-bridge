@@ -104,6 +104,10 @@ $ agentlink brief
 | "记一下：只做 CSV" | `agentlink note "只做 CSV" --kind decision` |
 | "帮我装一下这个 skill：<仓库链接>" | agent 按 `INSTALL.md` 装好并汇报 |
 
+在 Codex 里还有第三种方式：输入 `$`，候选里选 **agent-context-bridge**。
+这是显式点名，即使模型没想起来，技能也会被执行。直接写在句子里同样有效：
+"用 agent-context-bridge 看看我们之前做到哪了"。
+
 技能自带 `SKILL.md` 描述，聊到相关话题时 agent 会自己想起来用它 —— 命令不用背。
 想明确一点也行："跑一下 agentlink brief，然后接着做"。
 

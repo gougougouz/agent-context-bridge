@@ -2,6 +2,8 @@
 name: agent-context-bridge
 description: 在 DSH / Codex（ChatGPT）/ Claude Code 之间同步同一个项目的对话上下文与进度。当用户切换 agent、额度用完换工具、上下文断了、说"接着之前的做"，或问"之前聊到哪了 / 项目做到哪一步"时使用。
 whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到额度、上下文断了、继续之前的任务、查看其他 agent 的记录。
+short_description: 在 DSH / Codex / Claude 之间同步项目上下文与进度
+allow_implicit_invocation: true
 ---
 
 # 项目上下文桥（agentlink）
@@ -12,6 +14,7 @@ whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到�
 ## 什么时候用它
 
 - 用户从别的 agent 过来："接着刚才的做"、"我们之前聊到哪了"、"这个项目做到哪一步了"
+- 用户输入 `$agent-context-bridge` 点名（Codex 的显式调用），或说"用 agent-context-bridge…"
 - 用户提到额度用完、换工具、上下文丢了
 - 你接手一个陌生项目，想先看看历史讨论
 

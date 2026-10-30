@@ -109,6 +109,10 @@ normal language, and the agent runs the command itself:
 | "记一下：只做 CSV" | `agentlink note "只做 CSV" --kind decision` |
 | "帮我装一下这个 skill：<仓库链接>" | the agent follows `INSTALL.md` and installs it |
 
+In Codex there is a third way: type `$` in the composer and pick **agent-context-bridge**.
+That is an explicit mention — the skill runs even when the model would not have thought of it.
+The same name works in plain text: "use agent-context-bridge and tell me where we left off".
+
 The skill ships a `SKILL.md` description, so the agent reaches for it when the topic comes up
 — you do not have to remember the command. If you prefer to be explicit, "run agentlink brief
 and continue from it" works just as well.
