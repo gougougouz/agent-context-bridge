@@ -294,6 +294,7 @@ your-project/
 | 速览是空的 | 记录比 `--since` 更早，或者属于别的路径；`agentlink status` 会说明找到了什么 |
 | 摘要被标成"落后" | 新增记录超过阈值；重新走一次 L3，或者直接忽略 —— 规则层仍然是最新的 |
 | agent 好像不认识这个技能 | 重启客户端或新开会话；`agentlink doctor` 会显示 `SKILL.md` 有没有就位 |
+| 刚升级完，一行安装命令报语法错 | 镜像还在给旧文件；等一分钟重试，或用 https://cdn.jsdelivr.net/gh/gougougouz/agent-context-bridge@main/install.ps1 |
 
 ## 几个刻意的取舍
 

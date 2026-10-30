@@ -312,6 +312,7 @@ overwriting a good summary with an empty one.
 | brief looks empty | records are older than `--since`, or belong to another path; `agentlink status` shows what was found |
 | summary marked stale | more than a handful of new records arrived; rerun the L3 loop, or ignore it — the rules layer is still current |
 | the agent does not seem to know the skill | restart the client or open a new session; `agentlink doctor` shows whether `SKILL.md` is in place |
+| the install one-liner fails with a parse error right after an update | your mirror is serving a stale copy; retry in a minute, or use https://cdn.jsdelivr.net/gh/gougougouz/agent-context-bridge@main/install.ps1 |
 
 ## Design notes
 

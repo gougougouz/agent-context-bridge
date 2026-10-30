@@ -396,6 +396,43 @@ class AgentlinkTestCase(unittest.TestCase):
         brief = build_context(store, budget_tokens=3000, include_git=False)
         self.assertIn("CSV only", brief)
 
+    def test_cli_rejects_unknown_since(self):
+        from agentlink import cli
+
+        with self.assertRaises(SystemExit):
+            cli.main(["show", "--since", "last-tuesday", "--root", str(self.project)])
+
+    def test_cli_rejects_missing_root(self):
+        from agentlink import cli
+
+        with self.assertRaises(SystemExit):
+            cli.main(["brief", "--root", str(self.tmp / "nope" / "nowhere")])
+
+    def test_cli_refuses_empty_summary(self):
+        import contextlib
+        from agentlink import cli
+
+        buf = io.StringIO()
+        old = sys.stdin
+        sys.stdin = io.StringIO('{"sessions": "oops"}')
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                with self.assertRaises(SystemExit):
+                    cli.main(["summary", "apply", "--root", str(self.project)])
+        finally:
+            sys.stdin = old
+        self.assertNotIn("已保存", buf.getvalue())
+
+    def test_installers_are_plain_ascii(self):
+        """A BOM breaks `irm | iex`, so the bootstrap scripts stay ASCII and BOM-free."""
+        repo = Path(__file__).resolve().parents[1]
+        for name in ("install.ps1", "install.sh"):
+            raw = (repo / name).read_bytes()
+            self.assertFalse(raw.startswith(b"\xef\xbb\xbf"), f"{name} starts with a BOM")
+            for lineno, line in enumerate(raw.splitlines(), 1):
+                if any(byte > 127 for byte in line):
+                    self.fail(f"{name}:{lineno} is not ASCII: {line[:60]!r}")
+
 
 if __name__ == "__main__":
     unittest.main()
