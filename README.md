@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 # agentlink
 
@@ -79,8 +79,8 @@ flowchart LR
     C --> S
     K --> S
     S --> J --> G --> B
-    G -. "agent writes once" .-> A
-    A -. "merged for free" .-> B
+    G -.->|"agent writes once"| A
+    A -.->|"merged for free"| B
     B --> O["paste into any agent"]
 ```
 

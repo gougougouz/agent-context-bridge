@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 # agentlink
 
@@ -76,8 +76,8 @@ flowchart LR
     C --> S
     K --> S
     S --> J --> G --> B
-    G -. "agent 写一次" .-> A
-    A -. "之后免费合并" .-> B
+    G -.->|"agent 写一次"| A
+    A -.->|"之后免费合并"| B
     B --> O["贴给任意一个 agent"]
 ```
 
