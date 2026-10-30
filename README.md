@@ -1,4 +1,4 @@
-﻿# agentlink
+# agentlink
 
 **Switch agents. Keep the plot.** One project, three tools — DSH, Codex (ChatGPT), Claude Code.
 
@@ -6,19 +6,18 @@
 [![python](https://img.shields.io/badge/python-3.9%2B-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
 
-English · [简体中文](README.zh-CN.md)
+English · [简体中文](README.zh-CN.md) · [Install for agents](INSTALL.md)
 
 ---
 
 You finish a Codex session, hit the usage ceiling, and open DSH to keep going. The first
-thing it asks is what you are working on. So you explain the project again. Then you
-explain why you picked CSV over XLSX. Then you go looking for the file you had open two
-minutes ago.
+thing it asks is what you are working on. So you explain the project again. Then why you
+picked CSV over XLSX. Then you go looking for the file you had open two minutes ago.
 
-All three tools keep transcripts — just in different places, in different formats. They
-never talk to each other. `agentlink` reads those transcripts from disk, keeps what belongs
-to the current project, and prints a single brief you can hand to whichever agent you are
-talking to now.
+All three tools keep transcripts — different directories, different formats, no awareness of
+each other. `agentlink` reads them from disk, keeps what belongs to the current project, and
+prints one brief you hand to whichever agent you are talking to now. The next agent starts
+from the plan, not from zero.
 
 ```console
 $ agentlink brief
@@ -42,100 +41,79 @@ $ agentlink brief
 - Commands: pytest tests/test_idempotency.py
 ```
 
-## The idea
-
-Two layers, on purpose.
-
-**Facts are cheap.** Git state, your recent requests, decisions and TODOs pulled out by
-keyword, files and commands touched. Deterministic, offline, no model involved.
-
-**Meaning is expensive, so it is cached.** When a handoff really matters, an agent reads
-the facts, writes a structured summary once, and every later brief merges it — in all three
-tools — for free.
-
-```mermaid
-flowchart LR
-    subgraph transcripts["on disk"]
-        D["DSH · session.v4.jsonl.zstd"]
-        C["Codex · rollout-*.jsonl"]
-        K["Claude · projects/*.jsonl"]
-    end
-
-    subgraph agentlink
-        S["sources/<br/>parse + project match"]
-        J[("journal.jsonl")]
-        G["digest<br/>facts"]
-        A["summary.json<br/>cached handoff"]
-        B["brief"]
-    end
-
-    D --> S
-    C --> S
-    K --> S
-    S --> J --> G --> B
-    G -.->|"agent writes once"| A
-    A -.->|"merged for free"| B
-    B --> O["paste into any agent"]
-```
-
-Nothing leaves your machine. There is no API key to configure, and the only network call in
-the whole project is the installer downloading the repository.
-
 ## Install
 
-Windows, PowerShell:
+One command. No git, no clone, no virtualenv.
 
 ```powershell
+# Windows, PowerShell
 irm https://raw.githubusercontent.com/gougougouz/agent-context-bridge/main/install.ps1 | iex
 ```
 
-macOS / Linux:
-
 ```bash
+# macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/gougougouz/agent-context-bridge/main/install.sh | bash
 ```
 
-The script downloads the code, installs `zstandard` if it is missing, copies `SKILL.md` into
-the three skill directories, and puts an `agentlink` launcher on your PATH. Run it again to
-upgrade; it replaces the code and leaves your projects untouched.
+Restart DSH / Codex / Claude, or open a new session, so they pick up the new skill.
 
-| What it touches | Where |
+### Or let your agent do it
+
+Paste this into the chat box of any agent that can run shell commands, together with the
+repository link:
+
+> Install this skill for me: https://github.com/gougougouz/agent-context-bridge — follow
+> `INSTALL.md`, then tell me where it landed.
+
+The agent reads [INSTALL.md](INSTALL.md), checks Python, runs the one-liner for your OS,
+verifies with `agentlink --version` and `agentlink doctor`, and reports the three skill paths.
+That file is written for exactly this job, including what to do when the network, the home
+directory or PATH is restricted. It needs no follow-up instructions.
+
+| What it creates | Where |
 | --- | --- |
-| code | `%LOCALAPPDATA%\agentlink` (Windows), `~/.local/share/agentlink` (macOS/Linux) |
-| DSH skill | `~/.dsh/skills/agent-context-bridge/` |
-| Codex skill | `~/.codex/skills/agent-context-bridge/` |
-| Claude skill | `~/.claude/skills/agent-context-bridge/` |
-| launcher | `~/.../bin/agentlink` + a PATH entry pointing at it |
+| code | `%LOCALAPPDATA%\agentlink` (Windows) · `~/.local/share/agentlink` |
+| skill, DSH | `~/.dsh/skills/agent-context-bridge/` |
+| skill, Codex | `~/.codex/skills/agent-context-bridge/` |
+| skill, Claude | `~/.claude/skills/agent-context-bridge/` |
+| launcher | `<install dir>/bin/agentlink` |
 
-Pick a different location if you like:
+Move it elsewhere with `-Dir D:\app\agentlink` (Windows) or
+`AGENTLINK_HOME=/opt/agentlink` (macOS/Linux). Re-run the same command to upgrade.
+[INSTALL.md](INSTALL.md) also covers uninstalling and every switch.
 
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/gougougouz/agent-context-bridge/main/install.ps1))) -Dir D:\app\agentlink
-```
+## Where do I type this?
 
-```bash
-curl -fsSL .../install.sh | AGENTLINK_HOME=/opt/agentlink bash
-```
+Two different places, and it is worth knowing which is which.
 
-Then restart the tools, or open a new session, so they notice the skill. `agentlink doctor`
-tells you what it can see:
+**In a terminal** — PowerShell, Windows Terminal, iTerm, any shell. You type `agentlink`
+there, inside the project directory:
 
 ```console
-$ agentlink doctor
-agentlink 0.2.0
-Python      : D:\PythonEnv\python.exe (3.12.15)
-zstandard   : 0.25.0
-git         : F:\app\tools\git\cmd\git.exe
-
-DSH             skill installed  ~/.dsh/skills/agent-context-bridge
-                transcripts OK   ~/.dsh/sessions
-Codex (ChatGPT) skill installed  ~/.codex/skills/agent-context-bridge
-                transcripts OK   ~/.codex/sessions
-Claude Code     skill installed  ~/.claude/skills/agent-context-bridge
-                transcripts MISSING  ~/.claude/projects
+$ cd ~/code/payments-service
+$ agentlink brief
 ```
 
-## First five minutes
+This is for the first setup, for checking what was found, and for copying the brief into
+somewhere else. Most people run it once per switch, or stop typing it entirely once the habit
+is in place.
+
+**In the agent's chat box** — you never type `agentlink` there. You say what you want in
+normal language, and the agent runs the command itself:
+
+| You say in the chat box | What happens |
+| --- | --- |
+| "接着之前的做" · "where were we?" | the agent runs `agentlink brief`, reads it, continues |
+| "我刚从 Codex 切过来" · "I switched from Codex" | same, with the current ask emphasised |
+| "把这一轮交接写下来" | the agent writes the summary and stores it for the next tool |
+| "记一下：只做 CSV" | `agentlink note "只做 CSV" --kind decision` |
+| "帮我装一下这个 skill：<仓库链接>" | the agent follows `INSTALL.md` and installs it |
+
+The skill ships a `SKILL.md` description, so the agent reaches for it when the topic comes up
+— you do not have to remember the command. If you prefer to be explicit, "run agentlink brief
+and continue from it" works just as well.
+
+## Quick start
 
 ```console
 $ cd ~/code/payments-service
@@ -149,17 +127,11 @@ Total: 9 sessions, 2319 records
 Next: run `agentlink brief`, and `agentlink hook` if you want new sessions to notice it.
 ```
 
-```console
-$ agentlink brief            # the thing you paste
-$ agentlink note "CSV only, xlsx next iteration" --kind decision
-Recorded [decision]: CSV only, xlsx next iteration
-$ agentlink hook             # optional: a pointer in AGENTS.md / CLAUDE.md
-```
+Then, in the chat box: *"接着之前的做"*. Or in the terminal, `agentlink brief --copy` and
+paste it.
 
-`init --hook` does both setup steps at once (used by people who want the agents to bring the
-context up on their own).
-
-After that, the loop is short enough to remember:
+`agentlink hook` is optional: it writes a short pointer into `AGENTS.md` / `CLAUDE.md` so a
+new session notices the brief on its own. `init --hook` does both steps at once.
 
 ```mermaid
 sequenceDiagram
@@ -168,29 +140,72 @@ sequenceDiagram
     participant DSH
     You->>Codex: work until the window runs out
     Codex-->>You: partial work + conclusions
-    You->>DSH: switch tools
-    You->>DSH: agentlink brief (copied)
-    DSH-->>You: continues with the plan, not from zero
-    You->>Codex: next day, same brief
+    You->>DSH: open the same project
+    You->>DSH: "接着之前的做"
+    DSH->>DSH: agentlink brief
+    DSH-->>You: continues with the plan
+    You->>Codex: next morning, same brief
 ```
 
-## Usage, by situation
+## What it reads, and what it writes
 
-**Quota ran out mid-task.** `agentlink brief` — the new agent gets the current ask, the last
-conclusion, the files involved and the open TODOs. If the hand-off is subtle, say so; the
-agent will write the cached summary once (`agentlink digest` → JSON → `summary apply`) and
-the next switch reuses it.
+```mermaid
+flowchart LR
+    subgraph disk["transcripts on disk"]
+        D["DSH<br/>session.v4.jsonl.zstd"]
+        C["Codex<br/>rollout-*.jsonl"]
+        K["Claude<br/>projects/*.jsonl"]
+    end
 
-**Working on something for a week.** Run `agentlink brief --since 3d` to keep the brief
-focused, or `--full` when you want the timeline and git log as well. `agentlink status`
-tells you whether the cached summary is still fresh.
+    subgraph tool["agentlink"]
+        S["sources<br/>parse · claim by cwd"]
+        J[("journal.jsonl")]
+        R["rules<br/>asks · decisions · TODOs · files"]
+        M["summary.json<br/>cached handoff"]
+        B["brief"]
+    end
+
+    D --> S
+    C --> S
+    K --> S
+    S --> J
+    J --> R
+    J --> B
+    R --> B
+    R -.->|"agent writes once"| M
+    M -.->|"merged for free"| B
+    B --> OUT["paste into any agent"]
+```
+
+Two layers, on purpose. **Facts are cheap**: git state, recent asks, decisions and TODOs
+pulled out by keyword, files and commands touched — deterministic, offline, instant. **Meaning
+is expensive, so it is cached**: when a handoff deserves care, an agent reads the facts and
+writes a structured summary once; every later brief merges it, in all three tools, for free.
+
+Nothing leaves the machine. No API key, no telemetry. The only network request in the project
+is the installer fetching the repository.
+
+## Usage
+
+**Quota ran out mid-task.** Say "接着之前的做" in the new tool, or run `agentlink brief`.
+The agent gets the current ask, the last conclusion, the files involved and the open items.
+When the hand-off is subtle, the agent writes the cached summary once and the next switch
+reuses it.
+
+**A task that spans days.** `agentlink brief --since 3d` keeps the brief focused; `--full`
+adds the timeline, decisions and replay when you want the whole story. `agentlink status`
+says whether the cached summary is still fresh.
 
 **Not sure what happened yesterday.** `agentlink show --since yesterday --role user` lists
-the requests; `agentlink show --session 4f2a` gives you one session in full.
+what you asked for; `agentlink show --session 4f2a` prints one session whole.
 
-**Two people, three tools, one repo.** `.agentlink/` is git-ignored, so state stays local.
-If you want a teammate to get the same handoff, they run `agentlink brief` themselves — the
-facts come from their own transcripts, the summary from the shared repository history.
+**A decision you do not want to lose.**
+`agentlink note "只做 CSV，xlsx 下个迭代" --kind decision`. It shows up under decisions in
+every tool from then on, which is more reliable than hoping it was written down in prose.
+
+**A teammate needs the same context.** `.agentlink/` is git-ignored, so nothing is committed.
+They run `agentlink brief` in the same repository and get the facts from their own
+transcripts, plus the summary from the shared history.
 
 ## Commands
 
@@ -198,11 +213,11 @@ facts come from their own transcripts, the summary from the shared repository hi
 | --- | --- |
 | `agentlink init [--hook]` | create `.agentlink/`, pull existing sessions, optionally write the `AGENTS.md` pointer |
 | `agentlink sync` | pull new records (implicit in most other commands) |
-| `agentlink brief` | print the brief. `--full`, `--budget-tokens N`, `--since 3d`, `--out FILE`, `--copy`, `--stats`, `--no-ai`, `--no-git` |
-| `agentlink digest` | compact material for an agent to summarize (`--full`, `--max-tokens`, `--out`) |
+| `agentlink brief` | print the brief: `--full`, `--budget-tokens N`, `--since 3d`, `--out FILE`, `--copy`, `--stats`, `--no-ai`, `--no-git` |
+| `agentlink digest` | compact material for an agent to summarise (`--full`, `--max-tokens`, `--out`) |
 | `agentlink summary apply -f x.json` | store a handoff summary (`show`, `clear`) |
-| `agentlink note "..." --kind todo` | write a judgement all three tools will see (`note`, `decision`, `done`) |
-| `agentlink status` | sources, counts, cached summary freshness, brief size |
+| `agentlink note "..." --kind todo` | record a judgement every tool will see (`note`, `decision`, `done`) |
+| `agentlink status` | sources, counts, summary freshness, brief size |
 | `agentlink show` | raw records: `--session ID`, `--role user`, `--since 3d`, `--limit N`, `--full` |
 | `agentlink handoff --to claude` | write `.agentlink/HANDOFF.md` for one tool |
 | `agentlink hook [--remove]` | maintain the pointer block in `AGENTS.md` / `CLAUDE.md` |
@@ -214,7 +229,7 @@ Global flags: `--root DIR`, `--agent dsh,codex,claude`, `--lang en|zh`.
 ## What it costs
 
 A default brief is about 2–3k tokens — a short README's worth — and it is the only thing that
-enters a context window. That is usually the whole cost of switching tools.
+enters a context window. That is usually the entire cost of switching tools.
 
 | Tier | Command | Roughly | Use it when |
 | --- | --- | --- | --- |
@@ -223,54 +238,10 @@ enters a context window. That is usually the whole cost of switching tools.
 | L2 | `agentlink brief --full` | ~8k | you want the timeline, decisions and replay |
 | L3 | `agentlink digest` → JSON → `summary apply` | 3–8k, **once** | long hand-off, multi-day work |
 
-L3 is what keeps the whole thing affordable without cutting corners:
-
-```mermaid
-flowchart TD
-    A["summary.json (last time)"] --> D["agentlink digest"]
-    N["new records since then"] --> D
-    D --> M["agent writes a structured summary"]
-    M --> S["agentlink summary apply"]
-    S --> A
-    A -.-> B["every later brief merges it, free"]
-    B -.-> B
-```
-
-`digest` hands the agent the previous summary plus only the records added since, so refreshing
-costs a fraction of a re-read. Refresh when `brief --stats` says it is behind, or when the
-work genuinely moved on — not on every switch.
-
-## How it works
-
-```mermaid
-flowchart LR
-    A["~/.dsh/sessions/.../<br/>session.v4.jsonl.zstd"] --> P1["zstd frames → JSONL"]
-    B["~/.codex/sessions/YYYY/MM/DD/<br/>rollout-*.jsonl"] --> P2["JSONL, byte cursor"]
-    C["~/.claude/projects/<br/>*.jsonl"] --> P3["JSONL, byte cursor"]
-    P1 --> N["normalise to Event<br/>agent · session · role · text · ts"]
-    P2 --> N
-    P3 --> N
-    N --> J[("journal.jsonl")]
-    J --> R["rules: asks · decisions<br/>todos · files · commands"]
-    J --> T["timeline + session cards"]
-    R --> B2["brief"]
-    T --> B2
-```
-
-**Project claiming.** A session belongs to the project when the `cwd` it recorded is inside
-the project root (subdirectories included). Paths are normalised with `realpath`, which also
-catches Windows 8.3 short names — the kind CI uses.
-
-**Incremental reads.** Codex and Claude files only grow, so a byte offset plus a line index is
-enough. DSH rewrites its session file on every turn (compressed, multi-frame), so there the
-cursor is the record `seq` number.
-
-**Noise filtering.** Runtime context, system reminders, tool-result dumps, UI control tags and
-reviewer sub-threads are dropped; if a parser meets an unknown record type it skips it instead
-of failing.
-
-**Ordering.** Everything is merged by timestamp, not by which tool produced it, so a task
-that bounced Codex → DSH → Claude reads as one story.
+L3 is what keeps this affordable without cutting corners: `digest` hands the agent the
+previous summary plus only the records added since, so a refresh costs a fraction of a
+re-read. Refresh when `brief --stats` says it is behind, or when the work genuinely moved on
+— not on every switch.
 
 ## Project state
 
@@ -289,8 +260,8 @@ your-project/
 ```
 
 Delete `.agentlink/` and the next `brief` rebuilds everything from the transcripts. Set
-`AGENTLINK_STATE_DIR` if you prefer state outside the repository (useful when the project
-lives on a slow or read-only mount).
+`AGENTLINK_STATE_DIR` to keep state outside the repository, for a project on a slow or
+read-only mount.
 
 ## Writing a handoff summary
 
@@ -299,9 +270,9 @@ lives on a slow or read-only mount).
 ```json
 {
   "mode": "incremental",
-  "previous_summary": { "project": {...}, "state": {...}, "sessions": [...] },
+  "previous_summary": { "project": {}, "state": {}, "sessions": [] },
   "new_events": [
-    { "agent": "codex", "role": "user", "ts": "...", "text": "don't touch reconciliation yet" }
+    { "agent": "codex", "role": "user", "ts": "...", "text": "对账任务先别动" }
   ],
   "schema_hint": { "version": 1, "fields": ["project.goal", "state.in_progress[]", "..."] }
 }
@@ -328,28 +299,31 @@ Write it back as:
 Rules the skill gives the writing agent: only claim what the material supports; one line per
 item, under 60 characters; conclusions rather than transcripts; anything uncertain goes into
 `blocked` or `risks`. `summary apply` is tolerant — missing fields are ignored, a bare string
-becomes a one-item list, and the file is validated before it replaces the cached copy.
+becomes a one-item list — but it refuses a document with nothing usable in it rather than
+overwriting a good summary with an empty one.
 
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `agentlink: command not found` | the installer's PATH entry is in effect only in new terminals; or use the launcher in the skill folder (see `LOCAL.md` there) |
-| a tool reports `0 sessions` | that project's working directory differs from what the transcript recorded — run once with `--root <old path>` |
+| `agentlink: command not found` | the PATH entry takes effect in new terminals only; or use the launcher inside the skill folder (its `LOCAL.md` has the absolute path) |
+| a tool reports `0 sessions` | the project's working directory differs from what the transcript recorded — run once with `--root <old path>` |
 | `zstandard is not installed` | only DSH needs it: `python -m pip install zstandard` |
-| brief looks empty | the transcripts are older than `--since`, or they belong to another path; `agentlink status` shows what was found |
+| brief looks empty | records are older than `--since`, or belong to another path; `agentlink status` shows what was found |
 | summary marked stale | more than a handful of new records arrived; rerun the L3 loop, or ignore it — the rules layer is still current |
+| the agent does not seem to know the skill | restart the client or open a new session; `agentlink doctor` shows whether `SKILL.md` is in place |
 
 ## Design notes
 
-- **Why no LLM in the default path.** A digest that costs tokens cannot be the thing you run
-  every time you switch. Facts have to be free and instant; meaning can be paid for once.
-- **Why a JSON schema instead of prose.** Prose summaries drift and duplicate; a fixed schema
+- **No model in the default path.** Something you run on every switch cannot cost money.
+  Facts have to be free and instant; meaning can be paid for once.
+- **A JSON schema instead of prose.** Prose summaries drift and duplicate; a fixed schema
   merges, diffs and renders predictably, and it is cheap to validate.
-- **Why `.agentlink/` inside the project.** The unit of context is the project, and the state
-  should travel with it (via a backup, not via git). It is ignored by default.
-- **Why per-project rather than global.** Two projects interleaved would produce a brief that
-  is technically true and practically useless.
+- **State inside the project.** The unit of context is the project, so the state travels with
+  it — through backups, not through git. Ignored by default.
+- **Per-project, not global.** Two projects interleaved produce a brief that is technically
+  true and practically useless.
+- **Read-only on transcripts.** Nothing in `~/.dsh`, `~/.codex` or `~/.claude` is modified.
 
 ## Limits
 
@@ -358,7 +332,7 @@ becomes a one-item list, and the file is validated before it replaces the cached
 - Transcript formats are each vendor's internal business. Unknown record types are skipped
   rather than fatal, but a breaking change upstream may hide data until the parser catches up.
 - The same repository at two paths counts as two projects.
-- Token counts are estimates (display width ÷ 1.8); good enough for budgeting, not for billing.
+- Token counts are estimates (display width ÷ 1.8): good for budgeting, not for billing.
 
 ## Development
 
@@ -367,17 +341,17 @@ python -m unittest discover -s tests -v     # 15 offline tests, temp fixtures on
 PYTHONPATH=src python -m agentlink doctor
 ```
 
-CI runs the suite on Ubuntu and Windows, Python 3.9 and 3.12. The tests never touch real
-transcripts: each one writes synthetic sessions into a temporary home directory, including a
+CI runs the suite on Ubuntu and Windows, Python 3.9 and 3.12. Tests never touch real
+transcripts: each writes synthetic sessions into a temporary home directory, including a
 deliberately corrupt line to prove reads survive it.
 
 ```
 src/agentlink/
-├── cli.py        entry point, commands, argument handling
+├── cli.py        commands, argument handling, error messages
 ├── store.py      .agentlink state, cursors, journal, notes
 ├── sources/
-│   ├── base.py   shared discovery, incremental reader, tool summaries
-│   ├── dsh.py    zstd frames, record seq cursors, noise filters
+│   ├── base.py   discovery, incremental reader, tool summaries
+│   ├── dsh.py    zstd frames, seq cursors, noise filters
 │   ├── codex.py  rollout JSONL, control-tag stripping, session titles
 │   └── claude.py content blocks, tool_use, sidechain skipping
 ├── digest.py     brief builder: sections, budgets, timelines, token estimate
@@ -388,7 +362,7 @@ src/agentlink/
 └── install.py    skill installation, launcher, AGENTS.md pointer
 ```
 
-Adding a fourth agent means one file under `sources/` (a `discover` and an `ingest`) plus an
-entry in `SOURCES`; the brief builder does not care where events came from.
+A fourth agent means one file under `sources/` (`discover` and `ingest`) plus an entry in
+`SOURCES`; the brief builder does not care where events came from.
 
 MIT © Junwen Zhao

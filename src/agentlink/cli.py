@@ -58,7 +58,10 @@ def _setup_stdio() -> None:
 def resolve_root(explicit: str | None) -> Path:
     """--root wins; otherwise the nearest .agentlink/ above cwd; finally cwd."""
     if explicit:
-        return Path(explicit).expanduser().resolve()
+        path = Path(explicit).expanduser().resolve()
+        if not path.is_dir():
+            raise SystemExit(f"目录不存在：{path}")
+        return path
     cwd = Path.cwd().resolve()
     for candidate in [cwd, *cwd.parents]:
         if (candidate / ".agentlink" / "config.json").exists():
@@ -101,8 +104,6 @@ def cmd_init(args) -> int:
     else:
         _out(t("init.empty"))
     if getattr(args, "hook", False):
-        from .install import ensure_path_entry  # noqa: F401  (keeps import surface stable)
-
         touched = write_pointers(store.root, store.state.get("last_sync", ""))
         _out("")
         for path in touched:
@@ -160,13 +161,20 @@ def cmd_sync(args) -> int:
     return 0
 
 
+def _parse_since_or_die(value: str | None):
+    if not value:
+        return None
+    parsed = parse_since(value)
+    if parsed is None:
+        raise SystemExit(f"看不懂的时间表达式：{value}（试试 3d / 12h / today / 2026-10-28）")
+    return parsed
+
+
 def cmd_brief(args) -> int:
     store = open_store(args)
     if not args.no_sync:
         sync_sources(store, agents=_agent_names(args.agent))
-    since = parse_since(getattr(args, "since", None))
-    if getattr(args, "since", None) and not since:
-        raise SystemExit(f"看不懂的时间表达式：{args.since}（试试 3d / 12h / today / 2026-10-28）")
+    since = _parse_since_or_die(getattr(args, "since", None))
     events = store.events(limit=args.max_events or 400, since=since)
     context = build_context(
         store,
@@ -232,8 +240,10 @@ def cmd_digest(args) -> int:
     )
     text = json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None)
     if args.out:
-        Path(args.out).write_text(text, encoding="utf-8", newline="\n")
-        _out(f"已写入 {args.out}（约 {estimate_tokens(text)} tokens，模式 {payload['mode']}）")
+        from .util import atomic_write_text
+
+        atomic_write_text(Path(args.out), text + "\n")
+        _err(t("digest.saved", path=args.out, tokens=estimate_tokens(text), mode=payload["mode"]))
     else:
         sys.stdout.write(text + "\n")
     return 0
@@ -266,12 +276,21 @@ def cmd_summary(args) -> int:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise SystemExit(f"JSON 解析失败：{exc}") from None
+    preview = summary_mod.normalize(payload)
+    if not (preview["project"]["goal"] or preview["sessions"]
+            or any(preview["state"].values()) or preview["notes_for_next_agent"]):
+        raise SystemExit("这份摘要里没有可用的内容：至少要有 project.goal、state 或 sessions 之一。")
     data = summary_mod.save(store, payload)
     pending, count = summary_mod.needs_refresh(
         store, data, int((store.config["digest"].get("ai") or {}).get("min_new_events") or 6))
     _out(f"已保存 AI 摘要：{summary_mod.path_for(store)}")
-    _out(f"覆盖：{data['window']['from'] or '?'} → {data['window']['to'] or '?'}；"
-         f"会话 {len(data['sessions'])} 个；待办 {len(data['state']['in_progress'])} 项")
+    window = data["window"]
+    if window["from"] and window["to"]:
+        _out(t("summary.cover", frm=window["from"], to=window["to"],
+               sessions=len(data["sessions"]), todos=len(data["state"]["in_progress"])))
+    else:
+        _out(t("summary.cover.open", ts=data.get("generated_at") or "-",
+               sessions=len(data["sessions"]), todos=len(data["state"]["in_progress"])))
     if pending:
         _out(f"提示：此后还有 {count} 条新记录，需要时可以再整理一次。")
     return 0
@@ -347,7 +366,7 @@ def cmd_status(args) -> int:
 
 def cmd_show(args) -> int:
     store = open_store(args)
-    since = parse_since(getattr(args, "since", None))
+    since = _parse_since_or_die(getattr(args, "since", None))
     events = store.events(limit=args.max_events or 2000, since=since)
     if args.session:
         events = [e for e in events if e.session.startswith(args.session)]

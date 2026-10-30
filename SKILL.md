@@ -1,4 +1,4 @@
-﻿---
+---
 name: agent-context-bridge
 description: 在 DSH / Codex（ChatGPT）/ Claude Code 之间同步同一个项目的对话上下文与进度。当用户切换 agent、额度用完换工具、上下文断了、说"接着之前的做"，或问"之前聊到哪了 / 项目做到哪一步"时使用。
 whenToUse: 用户提到 codex / chatgpt / claude / dsh 之间切换，或提到额度、上下文断了、继续之前的任务、查看其他 agent 的记录。
@@ -104,6 +104,17 @@ curl -fsSL https://raw.githubusercontent.com/gougougouz/agent-context-bridge/mai
 - `zstandard` 缺失：只有 DSH 的会话是压缩的，`python -m pip install zstandard`。
 - 某一家显示 0 个会话：那个项目在该工具里的工作目录和现在不一致，用 `--root <当时的路径>` 跑一次。
 - 项目挪过位置：同上。
+
+## 用户要你在别的机器上装它
+
+如果用户在聊天里说"帮我装这个 skill"并给了仓库链接，或者他换了台机器：
+
+1. 读技能目录里的 `INSTALL.md`（没有的话读仓库里的），按 **Instructions for an agent** 一节做。
+2. 顺序是：确认 Python ≥ 3.9 → 跑对应系统的一条命令 → `agentlink --version` 与
+   `agentlink doctor` 验证 → 把版本、三个技能路径和"重启客户端"告诉用户。
+3. 不要 clone 仓库、不要建虚拟环境、不要改注册表；安装脚本本身已幂等，重跑即升级。
+4. 家目录只读或 PATH 不能改时，用 `-Dir` / `AGENTLINK_HOME` 换位置，或加 `-NoPath`，
+   技能目录里仍会生成可用的启动器。
 
 ## 边界
 

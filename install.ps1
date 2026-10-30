@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Install agentlink (the agent-context-bridge skill) on Windows with one command.
 
@@ -27,6 +27,9 @@
 
 .PARAMETER Ref
     Branch or tag to install. Default: main
+
+.PARAMETER Force
+    Overwrite -Dir even if it does not look like an agentlink install.
 #>
 [CmdletBinding()]
 param(
@@ -34,7 +37,8 @@ param(
     [string]$Agents = "dsh,codex,claude",
     [switch]$NoPath,
     [switch]$NoDeps,
-    [string]$Ref = "main"
+    [string]$Ref = "main",
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,6 +96,15 @@ if (-not $Dir) {
 $Dir = [System.IO.Path]::GetFullPath($Dir)
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 
+# never wipe a directory that is not ours
+$existing = @(Get-ChildItem -Path $Dir -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne ".venv" })
+$isOurs = (Test-Path (Join-Path $Dir "src/agentlink/__init__.py")) -or
+          (Test-Path (Join-Path $Dir "bin/agentlink.cmd"))
+if ($existing.Count -gt 0 -and -not $isOurs -and -not $Force) {
+    Fail "target already has files: $Dir`n    pick another place with -Dir D:\app\agentlink, or re-run with -Force"
+}
+
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("agentlink-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $zip = Join-Path $tmp "repo.zip"
@@ -110,7 +123,8 @@ $inner = Get-ChildItem -Path $tmp -Directory | Where-Object { $_.Name -like "age
 if (-not $inner) { Fail "unexpected archive layout" }
 
 # replace the code, keep nothing stale (state lives in projects, not here)
-Get-ChildItem -Path $Dir -Force | Where-Object { $_.Name -notin @(".venv") } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $Dir -Force | Where-Object { $_.Name -notin @(".venv") } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item -Path (Join-Path $inner.FullName "*") -Destination $Dir -Recurse -Force
 Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
 Say "$Dir"
@@ -141,6 +155,12 @@ $env:PYTHONPATH = Join-Path $Dir "src"
 PyRun -m agentlink install --agents $Agents
 if ($LASTEXITCODE -ne 0) { Fail "skill installation failed" }
 
+$installedVersion = (PyRun -m agentlink --version 2>$null | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $installedVersion) {
+    Fail "installed files did not run: try  $py -m agentlink doctor  with PYTHONPATH=$Dir\src"
+}
+Say $installedVersion
+
 if (-not $NoPath) {
     $bin = Join-Path $Dir "bin"
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -161,6 +181,8 @@ Say "try it in any project:"
 Write-Host ""
 Write-Host "    cd F:\path\to\your-project" -ForegroundColor White
 Write-Host "    agentlink brief" -ForegroundColor White
+Write-Host ""
+Say 'or, inside DSH / Codex / Claude, just say:  "read .agentlink/context.md and continue"'
 Write-Host ""
 Say "restart DSH / Codex / Claude (or open a new session) so the skill shows up."
 Write-Host ""

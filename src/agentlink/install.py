@@ -118,7 +118,7 @@ def install(agents: list[str], force: bool = True) -> list[dict]:
         target = skill_home(agent) / SKILL_NAME
         target.mkdir(parents=True, exist_ok=True)
         shutil.copy2(skill_src, target / "SKILL.md")
-        for extra in ("README.md", "README.zh-CN.md"):
+        for extra in ("README.md", "README.zh-CN.md", "INSTALL.md"):
             doc = root / extra
             if doc.exists():
                 shutil.copy2(doc, target / extra)

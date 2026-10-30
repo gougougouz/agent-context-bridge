@@ -9,12 +9,14 @@
 #   AGENTLINK_REF=main                                   branch or tag
 #   AGENTLINK_NO_DEPS=1                                  skip installing zstandard
 #   AGENTLINK_NO_PATH=1                                  do not touch PATH
+#   AGENTLINK_FORCE=1                                    overwrite a non-agentlink directory
 
 set -euo pipefail
 
 REPO="gougougouz/agent-context-bridge"
 REF="${AGENTLINK_REF:-main}"
 DIR="${AGENTLINK_HOME:-$HOME/.local/share/agentlink}"
+FORCE="${AGENTLINK_FORCE:-0}"
 AGENTS="${AGENTLINK_AGENTS:-dsh,codex,claude}"
 
 say() { printf '  %s\n' "$1"; }
@@ -39,6 +41,12 @@ say "$PY  ($("$PY" -c 'import sys; print(".".join(map(str, sys.version_info[:3])
 # ------------------------------------------------------------------ files
 head "2/4  files"
 mkdir -p "$DIR"
+if [ -n "$(find "$DIR" -mindepth 1 -maxdepth 1 ! -name '.venv' -print -quit 2>/dev/null)" ] \
+   && [ ! -f "$DIR/src/agentlink/__init__.py" ] && [ ! -f "$DIR/bin/agentlink.sh" ] \
+   && [ "$FORCE" != "1" ]; then
+  fail "target already has files: $DIR
+    pick another place with AGENTLINK_HOME=/opt/agentlink, or re-run with AGENTLINK_FORCE=1"
+fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 URL="https://codeload.github.com/$REPO/zip/refs/heads/$REF"
@@ -52,7 +60,7 @@ fi
 import sys, zipfile
 zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])
 PY
-INNER="$(find "$TMP" -maxdepth 1 -type d -name 'agent-context-bridge-*' | head -n 1)"
+INNER="$(find "$TMP" -maxdepth 1 -type d -name 'agent-context-bridge-*' -print -quit)"
 [ -n "$INNER" ] || fail "unexpected archive layout"
 find "$DIR" -mindepth 1 -maxdepth 1 ! -name '.venv' -exec rm -rf {} +
 cp -R "$INNER"/. "$DIR"/
@@ -72,8 +80,11 @@ fi
 
 # ------------------------------------------------------------------ skill
 head "4/4  skill"
-PYTHONPATH="$DIR/src" "$PY" -m agentlink install --agents "$AGENTS" \
+PYTHONPATH="$DIR/src" PYTHONUNBUFFERED=1 "$PY" -m agentlink install --agents "$AGENTS" \
   || fail "skill installation failed"
+VERSION="$(PYTHONPATH="$DIR/src" "$PY" -m agentlink --version 2>/dev/null || true)"
+[ -n "$VERSION" ] || fail "installed files did not run: $PY -m agentlink doctor (with PYTHONPATH=$DIR/src)"
+say "$VERSION"
 
 if [ "${AGENTLINK_NO_PATH:-0}" != "1" ]; then
   BIN="$DIR/bin"
@@ -91,4 +102,5 @@ fi
 head "done"
 say "try it in any project:"
 printf '\n    cd ~/code/your-project\n    agentlink brief\n\n'
+say 'or, inside DSH / Codex / Claude, just say:  "read .agentlink/context.md and continue"'
 say "restart DSH / Codex / Claude (or open a new session) so the skill shows up."

@@ -78,6 +78,18 @@ _STRINGS = {
     "doctor.skill.missing": ("未安装", "missing"),
     "doctor.ready": ("结论：环境就绪", "Result: ready"),
     "doctor.missing": ("结论：还有依赖缺失，见上面标记", "Result: some dependencies are missing (see above)"),
+    "summary.cover": (
+        "覆盖：{frm} → {to}；会话 {sessions} 个；待办 {todos} 项",
+        "Covers {frm} → {to}; {sessions} sessions; {todos} open items",
+    ),
+    "summary.cover.open": (
+        "没有给出时间范围（写于 {ts}）；会话 {sessions} 个；待办 {todos} 项",
+        "No time window given (written {ts}); {sessions} sessions; {todos} open items",
+    ),
+    "digest.saved": (
+        "已写入 {path}（约 {tokens} tokens，模式 {mode}）",
+        "Wrote {path} (~{tokens} tokens, mode {mode})",
+    ),
     "brief.footer": (
         '写进度：`agentlink note "..." --kind todo|decision`　'
         "整理摘要：`agentlink digest` → 写 JSON → `agentlink summary apply`。",
