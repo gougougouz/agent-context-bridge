@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .i18n import t
 from .model import AGENT_LABELS
 from .store import Store
 from .util import iso_to_dt, now_iso, read_json, rel_time, truncate_width, write_json
@@ -153,34 +154,34 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
     """Markdown block placed near the top of the brief."""
     stale = is_stale(store, data)
     when = data.get("generated_at") or ""
-    title = "## 2. 接手摘要（AI 整理）"
+    title = f"# {t('sec.ai')}"
     lines = [title, ""]
-    meta = f"> 生成于 {rel_time(when)}" if when else "> 生成时间未知"
+    meta = f"> {t('ai.generated', t=rel_time(when))}" if when else f"> {t('ai.unknown_time')}"
     if data.get("generator"):
-        meta += f"；来源：{data['generator']}"
+        meta += t("ai.source", g=data["generator"])
     if stale:
-        meta += "；**此后有新对话，建议重新整理**"
+        meta += t("ai.stale")
     lines.append(meta)
     lines.append("")
 
     project = data.get("project") or {}
     if project.get("goal"):
-        lines.append(f"- **项目目标**：{project['goal']}")
+        lines.append(f"- **{t('ai.goal')}**: {project['goal']}")
     if project.get("status"):
-        lines.append(f"- **当前状态**：{project['status']}")
+        lines.append(f"- **{t('ai.status')}**: {project['status']}")
     if project.get("stack"):
-        lines.append(f"- **技术栈**：{project['stack']}")
+        lines.append(f"- **{t('ai.stack')}**: {project['stack']}")
     if any(project.values()):
         lines.append("")
 
     state = data.get("state") or {}
     labels = {
-        "in_progress": "正在做",
-        "next": "下一步",
-        "blocked": "卡住/待确认",
-        "done": "已完成",
-        "decisions": "已定决策",
-        "risks": "风险",
+        "in_progress": t("ai.in_progress"),
+        "next": t("ai.next"),
+        "blocked": t("ai.blocked"),
+        "done": t("ai.done"),
+        "decisions": t("ai.decisions"),
+        "risks": t("ai.risks"),
     }
     for field in ("in_progress", "next", "blocked", "decisions", "done", "risks"):
         items = state.get(field) or []
@@ -193,7 +194,7 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
 
     sessions = data.get("sessions") or []
     if sessions:
-        lines.append("**各会话结论**")
+        lines.append(f"**{t('ai.sessions')}**")
         for item in sessions[:3]:
             agent = AGENT_LABELS.get(item.get("agent", ""), item.get("agent") or "?")
             head = item.get("title") or item.get("id") or ""
@@ -204,18 +205,18 @@ def render(store: Store, data: dict, budget: int = 6000) -> list[str]:
                 text += f" → {truncate_width(outcome, 120)}"
             lines.append(text)
             for open_item in (item.get("open") or [])[:2]:
-                lines.append(f"  - 未完成：{truncate_width(open_item, 140)}")
+                lines.append(f"  - {t('ai.open')}: {truncate_width(open_item, 140)}")
         lines.append("")
 
     notes = data.get("notes_for_next_agent") or []
     if notes:
-        lines.append("**给接手者的提醒**")
+        lines.append(f"**{t('ai.notes')}**")
         for note in notes[:3]:
             lines.append(f"- {truncate_width(note, 220)}")
         lines.append("")
 
     if not any([project.get("goal"), sessions, notes, any(state.values())]):
-        lines.append("- （摘要为空：重新运行 `agentlink digest` 后由 agent 生成）")
+        lines.append(t("ai.empty"))
         lines.append("")
 
     return lines

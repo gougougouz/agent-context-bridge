@@ -1,4 +1,4 @@
-"""Offline tests for the three transcript readers and the digest builder.
+﻿"""Offline tests for the three transcript readers and the digest builder.
 
 Run with:  python -m unittest discover -s tests -v
 No real agent data is touched: every fixture is written into a temp directory.
@@ -12,7 +12,6 @@ import os
 import shutil
 import tempfile
 import unittest
-import zstandard
 from pathlib import Path
 
 import sys
@@ -20,6 +19,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agentlink.digest import build_context, group_sessions  # noqa: E402
+from agentlink.model import Event  # noqa: E402
 from agentlink.sources import sync  # noqa: E402
 from agentlink.store import Store  # noqa: E402
 from agentlink.util import claude_project_dirname, dsh_session_dirname, width  # noqa: E402
@@ -48,8 +48,16 @@ class AgentlinkTestCase(unittest.TestCase):
         self._patch_env("CODEX_HOME", self.home / ".codex")
         self._patch_env("CLAUDE_CONFIG_DIR", self.home / ".claude")
         self._patch_env("AGENTLINK_STATE_DIR", self.state)
+        # tests assert Chinese section names: pin the language, don't inherit it
+        self._patch_env("AGENTLINK_LANG", "zh")
+        from agentlink.i18n import set_lang
+
+        set_lang("zh")
 
     def tearDown(self):
+        from agentlink.i18n import set_lang
+
+        set_lang(None)
         for key, value in self._env.items():
             if value is None:
                 os.environ.pop(key, None)
@@ -74,6 +82,8 @@ class AgentlinkTestCase(unittest.TestCase):
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / "session.v4.jsonl.zstd"
         payload = _jsonl(records).encode("utf-8")
+        import zstandard
+
         path.write_bytes(zstandard.ZstdCompressor().compress(payload))
         return path
 
@@ -322,7 +332,73 @@ class AgentlinkTestCase(unittest.TestCase):
         self.assertLess(short, long)
         self.assertGreater(short, 0)
 
+    # ------------------------------------------------------- filters & i18n
+
+    def test_since_filter(self):
+        from agentlink.model import Event
+        from agentlink.util import parse_since
+
+        store = self.store()
+        store.append_events([
+            Event(agent="dsh", session="s1", role="user", text="很久以前",
+                  ts="2020-01-01T10:00:00+08:00", seq=1),
+            Event(agent="dsh", session="s1", role="user", text="刚刚说的",
+                  ts="2999-01-01T10:00:00+08:00", seq=2),
+        ])
+        recent = store.events(since=parse_since("1d"))
+        self.assertEqual([e.text for e in recent], ["刚刚说的"])
+        self.assertIsNotNone(parse_since("3d"))
+        self.assertIsNotNone(parse_since("2026-01-01"))
+        self.assertIsNone(parse_since("not-a-date"))
+
+    def test_tail_read_skips_corrupt_lines(self):
+        store = self.store()
+        store.append_events([
+            Event(agent="dsh", session="s1", role="user", text=f"消息{i}",
+                  ts="2026-01-01T10:00:00+08:00", seq=i)
+            for i in range(5)
+        ])
+        with open(store.journal_path, "a", encoding="utf-8") as fh:
+            fh.write("{broken json\n")
+        tail = store.events(limit=3, tail=True)
+        self.assertEqual(len(tail), 3)
+        self.assertEqual(tail[-1].text, "消息4")
+        # a full read keeps working too
+        self.assertEqual(len(store.events(limit=10, tail=False)), 5)
+
+    def test_english_rendering(self):
+        from agentlink.digest import build_context
+        from agentlink.i18n import set_lang
+
+        store = self.store()
+        store.append_events([
+            Event(agent="codex", session="s1", role="user", text="implement export",
+                  ts="2026-01-01T10:00:00+08:00", seq=1),
+        ])
+        set_lang("en")
+        try:
+            brief = build_context(store, budget_tokens=3000, include_git=False)
+        finally:
+            set_lang("zh")
+        self.assertIn("Session cards", brief)
+        self.assertIn("Current asks", brief)
+        self.assertNotIn("各会话卡片", brief)
+
+    def test_english_keywords_still_extract(self):
+        from agentlink.digest import build_context
+
+        store = self.store()
+        store.append_events([
+            Event(agent="claude", session="s1", role="assistant",
+                  text="We decided to keep CSV only. Next step: add retries.",
+                  ts="2026-01-01T10:00:00+08:00", seq=1),
+        ])
+        brief = build_context(store, budget_tokens=3000, include_git=False)
+        self.assertIn("CSV only", brief)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
 

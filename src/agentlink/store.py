@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from pathlib import Path
 
 from .model import Event
 from .util import (
     append_jsonl,
+    atomic_write_text,
+    iso_to_dt,
     now_iso,
     read_json,
     read_jsonl,
@@ -21,8 +24,8 @@ DEFAULT_CONFIG = {
     "version": CONFIG_VERSION,
     "agents": ["dsh", "codex", "claude"],
     "digest": {
-        "budget_tokens": 2200,     # default brief size — keep cheap
-        "full_tokens": 6000,       # `brief --full`
+        "budget_tokens": 3000,     # default brief size — full but not bloated
+        "full_tokens": 8000,       # `brief --full`
         "budget": 0,               # legacy width budget; 0 = derive from tokens
         "max_events": 400,         # journal events considered
         "per_session_messages": 6,
@@ -129,7 +132,14 @@ class Store:
     def append_events(self, events: list[Event]) -> None:
         append_jsonl(self.journal_path, [e.to_record() for e in events])
 
-    def events(self, limit: int | None = None, tail: bool = True) -> list[Event]:
+    def events(self, limit: int | None = None, tail: bool = True,
+               since: "datetime | None" = None) -> list[Event]:
+        if since is not None:
+            # a date filter needs the full journal range, then a tail cut
+            recs = read_jsonl(self.journal_path)
+            events = [Event.from_record(r) for r in recs]
+            kept = [e for e in events if (iso_to_dt(e.ts) or since) >= since]
+            return kept[-limit:] if limit else kept
         recs = read_jsonl(self.journal_path, limit=limit, tail=tail)
         return [Event.from_record(r) for r in recs]
 
@@ -156,4 +166,5 @@ class Store:
                 p.stat().st_size for p in self.dir.glob("*") if p.is_file()
             ) if self.dir.exists() else 0,
         }
+
 

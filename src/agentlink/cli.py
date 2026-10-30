@@ -32,7 +32,8 @@ from .install import (
 from .model import AGENTS, AGENT_LABELS
 from .sources import SOURCES, discover_sessions, sync as sync_sources
 from .store import Store
-from .util import human_size, now_iso, rel_time, width
+from .i18n import set_lang, t
+from .util import human_size, now_iso, parse_since, rel_time, width
 
 
 # --------------------------------------------------------------------- helpers
@@ -150,7 +151,10 @@ def cmd_brief(args) -> int:
     store = open_store(args)
     if not args.no_sync:
         sync_sources(store, agents=_agent_names(args.agent))
-    events = store.events(limit=args.max_events or 400)
+    since = parse_since(getattr(args, "since", None))
+    if getattr(args, "since", None) and not since:
+        raise SystemExit(f"看不懂的时间表达式：{args.since}（试试 3d / 12h / today / 2026-10-28）")
+    events = store.events(limit=args.max_events or 400, since=since)
     context = build_context(
         store,
         budget=args.budget,
@@ -159,10 +163,15 @@ def cmd_brief(args) -> int:
         budget_tokens=args.budget_tokens,
         full=args.full,
         with_ai=not args.no_ai,
+        since=since,
     )
     store.context_path.write_text(context, encoding="utf-8", newline="\n")
     store.state["last_brief_ts"] = now_iso()
     store.save_state()
+    if getattr(args, "out", None):
+        from .util import atomic_write_text
+
+        atomic_write_text(Path(args.out), context)
     tokens = estimate_tokens(context)
     if args.json:
         views = group_sessions(events)
@@ -178,9 +187,14 @@ def cmd_brief(args) -> int:
     if args.stats:
         ai = summary_mod.load(store)
         pending = summary_mod.new_events_since(store, ai) if ai else []
-        _out(f"\n[agentlink] 约 {tokens} tokens；"
-             f"AI 摘要 {'有，落后 ' + str(len(pending)) + ' 条' if ai else '无'}；"
-             f"文件 {store.context_path}")
+        if not ai:
+            ai_state = t("cli.stats.ai_none")
+        elif pending:
+            ai_state = t("cli.stats.ai_fresh", n=len(pending))
+        else:
+            ai_state = t("cli.stats.ai_ok")
+        _out("")
+        _out(t("cli.stats", tokens=tokens, ai=ai_state, path=store.context_path))
     return 0
 
 
@@ -275,20 +289,22 @@ def cmd_status(args) -> int:
         }, ensure_ascii=False, indent=2))
         return 0
 
-    _out(f"项目：{store.root}")
-    _out(f"状态目录：{store.dir}")
-    _out(f"记录：{stats['events']} 条；已知会话 {stats['sessions']} 个；"
-         f"上次同步 {rel_time(stats['last_sync']) if stats['last_sync'] else '从未'}")
+    _out(t("cli.status.project", root=store.root))
+    _out(t("cli.status.state", dir=store.dir))
+    last = rel_time(stats["last_sync"]) if stats["last_sync"] else t("cli.status.never")
+    _out(t("cli.status.records", events=stats["events"], sessions=stats["sessions"], sync=last))
     ai = summary_mod.load(store)
     if ai:
         pending, count = summary_mod.needs_refresh(store, ai)
-        state = f"累计 {count} 条新记录" + ("，建议重新整理" if pending else "，仍够用")
-        _out(f"AI 摘要：{rel_time(ai.get('generated_at') or '')} 生成；{state}")
+        verdict = t("cli.status.suggest") if pending else t("cli.status.enough")
+        _out(t("cli.status.ai", when=rel_time(ai.get("generated_at") or ""),
+               n=count, verdict=verdict))
     else:
-        _out("AI 摘要：无（`agentlink digest` → agent 整理 → `agentlink summary apply`）")
+        _out(t("cli.status.ai.none"))
     if store.context_path.exists():
-        text = store.context_path.read_text(encoding="utf-8", errors="replace")
-        _out(f"缓存的速览：约 {estimate_tokens(text)} tokens（{store.context_path.name}）")
+        cached = store.context_path.read_text(encoding="utf-8", errors="replace")
+        _out(t("cli.status.brief", tokens=estimate_tokens(cached),
+               name=store.context_path.name))
     _out("")
     for name in AGENTS:
         src = SOURCES[name]
@@ -310,7 +326,8 @@ def cmd_status(args) -> int:
 
 def cmd_show(args) -> int:
     store = open_store(args)
-    events = store.events(limit=args.max_events or 2000)
+    since = parse_since(getattr(args, "since", None))
+    events = store.events(limit=args.max_events or 2000, since=since)
     if args.session:
         events = [e for e in events if e.session.startswith(args.session)]
     if args.agent:
@@ -318,10 +335,11 @@ def cmd_show(args) -> int:
     if args.role:
         events = [e for e in events if e.role == args.role]
     if not events:
-        _out("没有匹配的记录。先运行 `agentlink sync`。")
+        _out(t("show.empty"))
         return 1
     for ev in events[-args.limit:]:
-        who = {"user": "用户", "assistant": "助手", "tool": "工具"}.get(ev.role, ev.role)
+        who = {"user": t("role.user"), "assistant": t("role.assistant"),
+               "tool": t("role.tool")}.get(ev.role, ev.role)
         head = f"[{ev.agent} {ev.session[:8]} {who}] "
         body = ev.text if args.full else ev.text.replace("\n", " ")[: args.width]
         _out(head + body)
@@ -364,16 +382,17 @@ def cmd_hook(args) -> int:
 def cmd_install(args) -> int:
     agents = _agent_names(args.agents)
     results = install_skills(agents)
-    _out(f"已把 {SKILL_NAME} 安装到：")
+    _out(t("install.header", name=SKILL_NAME))
     for r in results:
-        _out(f"  - {AGENT_LABELS.get(r['agent'], r['agent'])}：{r['dir']}")
+        _out(f"  - {AGENT_LABELS.get(r['agent'], r['agent'])}: {r['dir']}")
     if args.path:
         from .install import ensure_path_entry
 
         added = ensure_path_entry(repo_root() / "bin")
-        _out(f"PATH：{'已追加' if added else '已存在或跳过'} {repo_root() / 'bin'}")
+        _out(t("install.path", state=t("install.path.added") if added else t("install.path.exists"),
+               path=repo_root() / "bin"))
     _out("")
-    _out("重启对应客户端（或新开会话）后，技能目录里会出现 agent-context-bridge。")
+    _out(t("install.restart", name=SKILL_NAME))
     return 0
 
 
@@ -407,7 +426,7 @@ def cmd_doctor(args) -> int:
         stats = store.stats()
         _out(f"记录        : {stats['events']} 条，上次同步 {stats['last_sync'] or '从未'}")
     _out("")
-    _out("结论：" + ("环境就绪" if ok else "还有依赖缺失，见上面标记"))
+    _out(t("doctor.ready") if ok else t("doctor.missing"))
     return 0 if ok else 1
 
 
@@ -420,6 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="在 DSH / Codex / Claude 之间同步项目上下文与进度。",
     )
     parser.add_argument("--version", action="version", version=f"agentlink {__version__}")
+    parser.add_argument("--lang", choices=["zh", "en"], help="输出语言（默认跟随系统）")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def common(p, root=True):
@@ -448,6 +468,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--budget-tokens", type=int, help="速览的 token 预算（默认 1500）")
     p.add_argument("--full", action="store_true", help="用完整预算（默认 6000 tokens）")
     p.add_argument("--stats", action="store_true", help="末尾附带 token 与摘要状态")
+    p.add_argument("--out", help="同时把速览写到这个文件")
+    p.add_argument("--since", help="只看这段时间：3d / 12h / 2026-10-28 / today")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_brief)
 
@@ -483,6 +505,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--role", choices=["user", "assistant", "tool"])
     p.add_argument("--limit", type=int, default=40)
     p.add_argument("--width", type=int, default=300)
+    p.add_argument("--since", help="只看这段时间：3d / 12h / today")
     p.add_argument("--full", action="store_true")
     p.set_defaults(func=cmd_show)
 
@@ -512,6 +535,28 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     _setup_stdio()
     parser = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        parser.print_help()
+        return 0
+    # --lang may appear before or after the subcommand: lift it out of argv
+    lang_flag = None
+    clean = []
+    skip = False
+    for i, item in enumerate(argv):
+        if skip:
+            skip = False
+            continue
+        if item == "--lang" and i + 1 < len(argv):
+            lang_flag = argv[i + 1]
+            skip = True
+            continue
+        if item.startswith("--lang="):
+            lang_flag = item.split("=", 1)[1]
+            continue
+        clean.append(item)
+    argv = clean
+    set_lang(lang_flag or os.environ.get("AGENTLINK_LANG"))
     args = parser.parse_args(argv)
     try:
         return int(args.func(args) or 0)
@@ -521,6 +566,13 @@ def main(argv: list[str] | None = None) -> int:
         raise
     except BrokenPipeError:
         return 0
+    except Exception as exc:  # noqa: BLE001 - one clean line beats a traceback
+        if os.environ.get("AGENTLINK_DEBUG"):
+            raise
+        print(f"agentlink: {exc}", file=sys.stderr)
+        if isinstance(exc, FileNotFoundError):
+            print("  hint: run `agentlink doctor` to check paths and dependencies", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

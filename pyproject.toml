@@ -4,14 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentlink"
-version = "0.1.0"
-description = "Sync project context and progress across DSH, Codex (ChatGPT) and Claude Code"
+version = "0.2.0"
+description = "Switch agents, keep the plot: project context and progress shared across DSH, Codex (ChatGPT) and Claude Code"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Junwen Zhao" }]
-keywords = ["agents", "context", "handoff", "codex", "claude", "dsh"]
+keywords = ["agents", "context", "handoff", "codex", "claude", "dsh", "skill"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Version Control",
+    "Topic :: Utilities",
+]
 dependencies = ["zstandard>=0.21"]
+
+[project.urls]
+Homepage = "https://github.com/gougougouz/agent-context-bridge"
+Repository = "https://github.com/gougougouz/agent-context-bridge"
+Issues = "https://github.com/gougougouz/agent-context-bridge/issues"
 
 [project.optional-dependencies]
 dev = []

@@ -7,8 +7,10 @@ import os
 import re
 import sys
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from .i18n import t
 
 WINDOWS = os.name == "nt"
 
@@ -152,6 +154,8 @@ def append_jsonl(path: Path, records) -> None:
 def read_jsonl(path: Path, limit: int | None = None, tail: bool = False):
     if not path.exists():
         return []
+    if tail and limit:
+        return _read_jsonl_tail(path, limit)
     out = []
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -164,9 +168,81 @@ def read_jsonl(path: Path, limit: int | None = None, tail: bool = False):
                 continue
             if limit and not tail and len(out) >= limit:
                 break
-    if limit and tail:
-        out = out[-limit:]
     return out
+
+
+def _read_jsonl_tail(path: Path, limit: int) -> list:
+    """Read only the last `limit` records, without parsing the whole journal."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return []
+    chunk = 65536
+    block = min(chunk, max(size, 1))
+    data = b""
+    with open(path, "rb") as fh:
+        pos = size
+        while pos > 0 and data.count(b"\n") <= limit:
+            step = min(block, pos)
+            pos -= step
+            fh.seek(pos)
+            data = fh.read(step) + data
+            block = min(block * 2, 4 * 1024 * 1024)
+    lines = data.split(b"\n")
+    if pos > 0:
+        lines = lines[1:]  # first line may be cut in half
+    out = []
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            out.append(json.loads(raw.decode("utf-8", errors="replace")))
+        except json.JSONDecodeError:
+            continue
+        if len(out) >= limit:
+            break
+    out.reverse()
+    return out
+
+
+_SINCE_UNITS = {"m": 60, "h": 3600, "d": 86400, "w": 7 * 86400}
+
+
+def parse_since(value: str | None) -> datetime | None:
+    """Accept 3d / 12h / 90m / an ISO date / today / yesterday."""
+    if not value:
+        return None
+    text = str(value).strip().lower()
+    now = datetime.now(timezone.utc).astimezone()
+    if text in ("today", "今天"):
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if text in ("yesterday", "昨天"):
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return day - timedelta(days=1)
+    match = re.fullmatch(r"(\d+)\s*([mhdw])", text)
+    if match:
+        return now - timedelta(seconds=int(match.group(1)) * _SINCE_UNITS[match.group(2)])
+    dt = iso_to_dt(text)
+    if dt:
+        return dt
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%m-%d"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            if fmt == "%m-%d":
+                parsed = parsed.replace(year=now.year)
+            return parsed.replace(tzinfo=now.tzinfo)
+        except ValueError:
+            continue
+    return None
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
 
 
 def human_size(n: int) -> str:
@@ -184,13 +260,13 @@ def rel_time(value: str) -> str:
     delta = datetime.now(dt.tzinfo) - dt
     secs = delta.total_seconds()
     if secs < 60:
-        return "刚刚"
+        return t("time.now")
     if secs < 3600:
-        return f"{int(secs // 60)} 分钟前"
+        return t("time.min", n=int(secs // 60))
     if secs < 86400:
-        return f"{int(secs // 3600)} 小时前"
+        return t("time.hour", n=int(secs // 3600))
     if secs < 86400 * 30:
-        return f"{int(secs // 86400)} 天前"
+        return t("time.day", n=int(secs // 86400))
     return dt.strftime("%Y-%m-%d")
 
 

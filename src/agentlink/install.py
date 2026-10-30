@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .model import AGENT_LABELS
+from .i18n import t
 from .util import WINDOWS
 
 SKILL_NAME = "agent-context-bridge"

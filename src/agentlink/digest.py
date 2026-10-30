@@ -16,17 +16,20 @@ from pathlib import Path
 from . import summary as summary_mod
 from .activity import extract_activity, short_path
 from .gitinfo import snapshot
+from .i18n import t
 from .model import AGENT_LABELS, Event
 from .store import Store
 from .util import iso_to_dt, now_iso, read_json, rel_time, truncate_width, width
 
 DECISION_HINT = re.compile(
-    r"(决定|结论|约定|决策|已确认|方案定|采用|不要再|必须|禁止|注意[:：])",
+    r"(决定|结论|约定|决策|已确认|方案定|采用|不要再|必须|禁止|注意[:：]|decided|decision|we'll use|going with|must not|never do|keep in mind)",
 )
 TODO_HINT = re.compile(
-    r"(待办|TODO|todo|未完成|下一步|待实现|还未|尚需|还需要|接着做|剩[下余])",
+    r"(待办|TODO|todo|未完成|下一步|待实现|还未|尚需|还需要|接着做|剩[下余]|next step|remaining|still need|not yet|left to)",
 )
-REQUEST_HINT = re.compile(r"(要求|需求|目标|请实现|需要实现|任务[:：]|功能[:：])")
+REQUEST_HINT = re.compile(
+    r"(要求|需求|目标|请实现|需要实现|任务[:：]|功能[:：]|please implement|need to implement|requirement|task[:：]|feature[:：])",
+)
 ITEM_LINE = re.compile(r"^\s*(?:\d+[.、)）]|[-*+])\s*(\S.{3,})")
 TODO_LINE = re.compile(r"^\s*(?:[-*+]|\d+\.)\s*\[?\s?\]?\s*(.+)$")
 
@@ -100,7 +103,7 @@ class SessionView:
                 else:
                     continue
             return truncate_width(first, 70)
-        return "（无用户消息）"
+        return t("empty.no_messages")
 
     def files(self, limit: int = 5) -> list[str]:
         return [short_path(f["path"], self.root) for f in self.activity["files"][:limit]]
@@ -115,7 +118,7 @@ class SessionView:
         heading = f"### {self.label}"
         if not self.title:
             heading += f" — {self.topic()}"
-        lines = [f"{heading}（最后活动 {rel_time(self.last_ts)}）"]
+        lines = [t("card.heading", head=heading, t=rel_time(self.last_ts))]
         users = self.user_events()
         assistants = self.assistant_events()
 
@@ -125,22 +128,22 @@ class SessionView:
         if len(users) > 2:
             asks.append(truncate_width(users[-1].text.replace("\n", " "), 150))
         if asks:
-            lines.append("- **诉求**：" + "；".join(asks))
+            lines.append(f"- **{t('card.ask')}**: " + t("sep.semi").join(asks))
 
         if assistants:
             last = truncate_width(assistants[-1].text.replace("\n", " "), 240)
-            lines.append(f"- **最后结论**：{last}")
+            lines.append(f"- **{t('card.conclusion')}**: {last}")
 
         files = self.files()
         if files:
-            lines.append("- **涉及文件**：" + "、".join(f"`{f}`" for f in files))
+            lines.append(f"- **{t('card.files')}**: " + t("sep.list").join(f"`{f}`" for f in files))
 
         cmds = self.commands()
         if cmds:
-            lines.append("- **关键命令**：" + "；".join(f"`{c}`" for c in cmds))
+            lines.append(f"- **{t('card.commands')}**: " + t("sep.semi").join(f"`{c}`" for c in cmds))
 
         if not asks and not assistants:
-            lines.append("- （该会话只有工具调用，没有对话内容）")
+            lines.append(f"- {t('card.nochat')}")
         return lines
 
     def render_replay(self, per_session: int = 6) -> list[str]:
@@ -160,7 +163,7 @@ class SessionView:
             if ev.text.strip() == last_text:
                 continue
             last_text = ev.text.strip()
-            who = "用户" if ev.role == "user" else "助手"
+            who = t("role.user") if ev.role == "user" else t("role.assistant")
             lines.append(f"- **{who}**（{rel_time(ev.ts)}）：{truncate_width(ev.text.replace(chr(10), ' '), 220)}")
         return lines
 
@@ -312,22 +315,22 @@ class Block:
 
 def _snapshot_block(store: Store) -> Block:
     info = snapshot(store.root, log_limit=store.config["git"].get("log_limit", 8))
-    lines = [f"- 项目根目录：`{store.root}`"]
+    lines = [f"- {t('snap.root')}: `{store.root}`"]
     if info.get("is_repo"):
         lines.append(f"- Git：`{info.get('branch') or '?'}` @ `{info.get('head') or '?'}`")
         if info.get("commits"):
-            lines.append("- 最近提交：")
+            lines.append(f"- {t('snap.commits')}:")
             for c in info["commits"][:4]:
                 lines.append(f"  - `{c['hash']}` {c['date']} {truncate_width(c['subject'], 90)}")
         dirty = info.get("dirty") or []
         if dirty:
             shown = "、".join(f"`{d[3:] if len(d) > 3 else d}`" for d in dirty[: SECTION_LIMITS["dirty"]])
-            lines.append(f"- 未提交改动 {len(dirty)} 项：{shown}")
+            lines.append(f"- {t('snap.dirty', n=len(dirty))}: {shown}")
         else:
-            lines.append("- 工作区干净")
+            lines.append(f"- {t('snap.clean')}")
     else:
-        lines.append("- 不是 Git 仓库（进度以会话与 note 为准）")
-    return Block(3, "项目快照", lines)
+        lines.append(f"- {t('snap.nogit')}")
+    return Block(3, t("sec.snapshot"), lines)
 
 
 def _delta_block(store: Store, events: list[Event]) -> Block | None:
@@ -340,12 +343,13 @@ def _delta_block(store: Store, events: list[Event]) -> Block | None:
     fresh = [e for e in events if (iso_to_dt(e.ts) or cutoff) > cutoff]
     if not fresh:
         return None
-    lines = [f"- 上次速览（{rel_time(since)}）之后新增 {len(fresh)} 条记录"]
+    lines = [t("delta.head", t=rel_time(since), n=len(fresh))]
     for ev in fresh[-8:]:
-        who = {"user": "用户", "assistant": "助手", "tool": "工具"}.get(ev.role, ev.role)
+        who = {"user": t("role.user"), "assistant": t("role.assistant"),
+               "tool": t("role.tool")}.get(ev.role, ev.role)
         lines.append(f"- {AGENT_LABELS.get(ev.agent, ev.agent).split(' / ')[0]}｜{who}："
                      f"{truncate_width(ev.text.replace(chr(10), ' '), 160)}")
-    return Block(2, "上次速览之后的新进展", lines)
+    return Block(2, t("sec.delta"), lines)
 
 
 def build_sections(
@@ -365,11 +369,11 @@ def build_sections(
         ai_lines = summary_mod.render(store, ai)[1:]
         while ai_lines and not ai_lines[0].strip():
             ai_lines.pop(0)
-        blocks.append(Block(1, "接手摘要（AI 整理）", ai_lines))
+        blocks.append(Block(1, t("sec.ai"), ai_lines))
 
     tasks = _current_tasks(events)
-    blocks.append(Block(1, "当前任务（最近的用户请求，新→旧）",
-                        tasks or ["- （暂无可用的用户消息）"]))
+    blocks.append(Block(1, t("sec.tasks"),
+                        tasks or [f"- {t('empty.no_messages')}"]))
 
     delta = _delta_block(store, events)
     if delta:
@@ -377,27 +381,27 @@ def build_sections(
 
     timeline = _timeline(events)
     if timeline:
-        blocks.append(Block(2, "统一时间线（三家合并，最近的在后）", timeline))
+        blocks.append(Block(2, t("sec.timeline"), timeline))
 
     if views:
         session_lines: list[str] = []
         for view in views[: SECTION_LIMITS["sessions"]]:
             session_lines.extend(view.render_card(store.config["digest"].get("per_session_messages", 6)))
             session_lines.append("")
-        blocks.append(Block(1, "各会话卡片", session_lines))
+        blocks.append(Block(1, t("sec.cards"), session_lines))
     else:
-        blocks.append(Block(1, "各会话卡片", ["- 还没有读到任何会话记录。先运行 `agentlink sync`。"]))
+        blocks.append(Block(1, t("sec.cards"), [t("empty.no_sessions")]))
 
     todos = _notes(store, "todo") + _todo_from_requests(events) + _scan(
         events, TODO_HINT, SECTION_LIMITS["todos"])
     todo_lines = [f"- {t}" for t in _dedupe(todos)[: SECTION_LIMITS["todos"]]]
     if not todo_lines:
-        todo_lines = ["- （未识别到明确待办；可写入 `agentlink note \"...\" --kind todo`）"]
-    blocks.append(Block(2, "进行中的任务 / 待办", todo_lines))
+        todo_lines = [t("empty.no_todos")]
+    blocks.append(Block(2, t("sec.todos"), todo_lines))
 
     decisions = _notes(store, "decision") + _scan(events, DECISION_HINT, SECTION_LIMITS["decisions"])
-    dec_lines = [f"- {d}" for d in _dedupe(decisions)[: SECTION_LIMITS["decisions"]]] or ["- （暂无）"]
-    blocks.append(Block(3, "已确认的决定与约束", dec_lines))
+    dec_lines = [f"- {d}" for d in _dedupe(decisions)[: SECTION_LIMITS["decisions"]]] or [f"- {t('empty.none')}"]
+    blocks.append(Block(3, t("sec.decisions"), dec_lines))
 
     if views:
         replay: list[str] = []
@@ -406,7 +410,7 @@ def build_sections(
             replay.extend(view.render_replay())
             replay.append("")
         if replay:
-            blocks.append(Block(4, "对话回放（节选）", replay))
+            blocks.append(Block(4, t("sec.replay"), replay))
 
     return blocks
 
@@ -414,26 +418,25 @@ def build_sections(
 def _assemble(store: Store, blocks: list[Block], budget: int, events: list[Event],
               views: list[SessionView]) -> str:
     covered_agents = sorted({e.agent for e in events})
-    covered = "、".join(AGENT_LABELS.get(a, a) for a in covered_agents) or "（暂无）"
+    covered = t("sep.list").join(AGENT_LABELS.get(a, a) for a in covered_agents) or t("empty.none")
     if events:
         first = min((e.ts for e in events if e.ts), default="")
         span = f"{rel_time(first)} → {rel_time(events[-1].ts)}" if events[-1].ts else rel_time(first)
     else:
-        span = "无记录"
+        span = t("span.none")
 
     header = [
-        f"# 项目上下文速览 · {Path(store.root).name}",
+        t("brief.title", name=Path(store.root).name),
         "",
-        f"> 生成于 {now_iso()}；覆盖 {len(views)} 个会话 / {len(events)} 条记录"
-        f"（{covered}；{span}）。",
-        "> 供接手者对齐：当前任务、AI 摘要、时间线、会话卡片、待办与决定。",
-        "> 细节：`agentlink show --session <id>`；刷新：`agentlink sync`。",
+        t("brief.coverage", ts=now_iso(), sessions=len(views), events=len(events),
+          agents=covered, span=span),
+        t("brief.purpose"),
+        t("brief.hint"),
         "",
     ]
     footer = [
         "---",
-        "写进度：`agentlink note \"...\" --kind todo|decision`　"
-        "整理摘要：`agentlink digest` → 写 JSON → `agentlink summary apply`。",
+        t("brief.footer"),
         "",
     ]
 
@@ -467,6 +470,7 @@ def build_context(
     with_ai: bool = True,
     budget_tokens: int | None = None,
     full: bool = False,
+    since=None,
 ) -> str:
     cfg = store.config["digest"]
     if budget_tokens:
@@ -477,7 +481,7 @@ def build_context(
         budget = tokens_to_width(int(cfg["budget_tokens"]))
     budget = int(budget or cfg.get("budget") or tokens_to_width(1500))
     max_events = int(max_events or cfg.get("max_events") or 400)
-    events = store.events(limit=max_events)
+    events = store.events(limit=max_events, since=since)
     views = group_sessions(events, _titles_from_store(store), store.root)
     blocks = build_sections(store, events, views, include_git=include_git, with_ai=with_ai)
     return _assemble(store, blocks, budget, events, views)
@@ -487,9 +491,7 @@ def build_handoff(store: Store, target: str, budget: int | None = None) -> str:
     label = AGENT_LABELS.get(target, target)
     brief = build_context(store, budget=budget)
     return (
-        f"# 交接说明（目标：{label}）\n\n"
-        "本项目在 DSH / Codex / Claude 之间切换过。继续之前请先读下面的项目速览，"
-        "它汇总了其他 agent 的对话结论、待办与最近改动。\n\n"
+        t("handoff.title", label=label) + "\n\n" + t("handoff.body") + "\n\n"
         "```markdown\n" + brief + "```\n"
     )
 
