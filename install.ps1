@@ -189,7 +189,7 @@ Write-Host ""
 Write-Host "    cd F:\path\to\your-project" -ForegroundColor White
 Write-Host "    agentlink brief" -ForegroundColor White
 Write-Host ""
-Say 'or, inside DSH / Codex / Claude, just say:  "read .agentlink/context.md and continue"'
+Say 'or, inside DSH / Codex / Claude, just say:  "where were we? continue from there"'
 Write-Host ""
 Say "restart DSH / Codex / Claude (or open a new session) so the skill shows up."
 Write-Host ""

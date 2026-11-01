@@ -110,5 +110,5 @@ fi
 head "done"
 say "try it in any project:"
 printf '\n    cd ~/code/your-project\n    agentlink brief\n\n'
-say 'or, inside DSH / Codex / Claude, just say:  "read .agentlink/context.md and continue"'
+say 'or, inside DSH / Codex / Claude, just say:  "where were we? continue from there"'
 say "restart DSH / Codex / Claude (or open a new session) so the skill shows up."
