@@ -1,4 +1,4 @@
-﻿"""Turn the journal into a compact, agent-readable project brief (context.md).
+"""Turn the journal into a compact, agent-readable project brief (context.md).
 
 Two layers:
   * rules   — always available, deterministic, free (this module)
@@ -511,7 +511,9 @@ def build_digest_payload(
     plus only the records that appeared afterwards, so refreshing costs a
     fraction of a full re-read.
     """
-    events = store.events(limit=max_events)
+    indexed = store.events_with_index()
+    window = indexed[-max_events:] if max_events else indexed
+    events = [event for _, event in window]
     views = group_sessions(events, _titles_from_store(store), store.root)
     prev = summary_mod.load(store) if since_last else None
     notes = store.notes()
@@ -538,8 +540,15 @@ def build_digest_payload(
         },
     }
 
+    # coverage is a journal position, not a time: a session discovered after the
+    # summary was written is new to us while its messages are older than it was
+    covered = max((index for index, _ in window), default=-1) + 1
+    shown: list[tuple[int, object]] = []
     if prev:
-        fresh = summary_mod.new_events_since(store, prev)
+        # deliver the *oldest* unread records first, so the coverage watermark
+        # advances contiguously and nothing is skipped or re-sent forever
+        fresh_pairs = sorted(summary_mod.new_events_indexed(store, prev), key=lambda p: p[0])
+        shown = fresh_pairs[:80]
         payload["previous_summary"] = {
             "generated_at": prev.get("generated_at"),
             "project": prev.get("project"),
@@ -550,9 +559,22 @@ def build_digest_payload(
         payload["new_events"] = [
             {"agent": e.agent, "session": e.session[:8], "role": e.role, "ts": e.ts,
              "text": truncate_width(e.text.replace("\n", " "), 280)}
-            for e in fresh[-80:]
+            for _, e in shown
         ]
-        payload["new_event_count"] = len(fresh)
+        payload["new_event_count"] = len(fresh_pairs)
+        # the newest asks are cheap and keep the summary anchored to "now",
+        # even when the backlog above still has to be worked through
+        payload["latest_asks"] = [
+            truncate_width(e.text.replace("\n", " "), 240)
+            for e in events if e.role == "user"
+        ][-5:]
+        prev_cov = summary_mod.coverage_index(prev)
+        if shown:
+            covered = shown[-1][0] + 1
+        elif prev_cov is not None:
+            covered = prev_cov
+        else:
+            covered = store.journal_len()
     else:
         payload["sessions"] = [v.digest_card() for v in views[:8]]
         payload["recent_user_asks"] = [
@@ -565,14 +587,22 @@ def build_digest_payload(
     def size() -> int:
         return estimate_tokens(json.dumps(payload, ensure_ascii=False))
 
-    # trim the least important material until the payload fits:
-    # raw asks first, then the oldest session cards, then notes
+    # trim the least important material until the payload fits: raw asks first,
+    # then the oldest session cards, then notes, then the newest batch entries
+    # (dropping from the end keeps coverage contiguous: those come again)
     while size() > max_tokens and payload.get("recent_user_asks"):
         payload["recent_user_asks"].pop(0)
+    while size() > max_tokens and payload.get("latest_asks"):
+        payload["latest_asks"].pop(0)
     while size() > max_tokens and payload.get("sessions"):
         payload["sessions"].pop()
-    while size() > max_tokens and payload.get("new_events"):
-        payload["new_events"].pop(0)
+    while size() > max_tokens and len(payload.get("new_events") or []) > 1:
+        payload["new_events"].pop()
+        shown.pop()
+    if shown:
+        covered = shown[-1][0] + 1
     if size() > max_tokens and payload.get("notes"):
         payload["notes"] = []
+
+    payload["coverage"] = {"journal_through": covered}
     return payload

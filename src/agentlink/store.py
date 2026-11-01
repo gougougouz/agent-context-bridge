@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .model import Event
@@ -17,6 +17,7 @@ from .util import (
     write_json,
 )
 
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 STATE_DIRNAME = ".agentlink"
 CONFIG_VERSION = 1
 
@@ -132,16 +133,37 @@ class Store:
     def append_events(self, events: list[Event]) -> None:
         append_jsonl(self.journal_path, [e.to_record() for e in events])
 
+    def events_with_index(self) -> list[tuple[int, Event]]:
+        """Every journal event paired with its line number, sorted by time.
+
+        The journal is in import order, which is not time order: a tool synced
+        later appends older messages. Anything that asks for "the latest" goes
+        through here, so a fresh request cannot hide behind a backfill.
+        """
+        pairs = [
+            (index, Event.from_record(rec))
+            for index, rec in enumerate(read_jsonl(self.journal_path))
+        ]
+        pairs.sort(key=lambda pair: (iso_to_dt(pair[1].ts) or _EPOCH, pair[0]))
+        return pairs
+
     def events(self, limit: int | None = None, tail: bool = True,
                since: "datetime | None" = None) -> list[Event]:
+        pairs = self.events_with_index()
         if since is not None:
-            # a date filter needs the full journal range, then a tail cut
-            recs = read_jsonl(self.journal_path)
-            events = [Event.from_record(r) for r in recs]
-            kept = [e for e in events if (iso_to_dt(e.ts) or since) >= since]
-            return kept[-limit:] if limit else kept
-        recs = read_jsonl(self.journal_path, limit=limit, tail=tail)
-        return [Event.from_record(r) for r in recs]
+            pairs = [p for p in pairs if (iso_to_dt(p[1].ts) or since) >= since]
+        events = [event for _, event in pairs]
+        return events[-limit:] if limit else events
+
+    def events_after(self, index: int) -> list[Event]:
+        """Journal events from line `index` onwards, oldest import first."""
+        if index <= 0:
+            return self.events()
+        recs = read_jsonl(self.journal_path)
+        return [Event.from_record(rec) for rec in recs[index:]]
+
+    def journal_len(self) -> int:
+        return len(read_jsonl(self.journal_path))
 
     # ----------------------------------------------------------------- notes
 

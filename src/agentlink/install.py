@@ -147,8 +147,9 @@ def pointer_block(synced_at: str) -> str:
     return f"""{MARK_BEGIN}
 ## 项目上下文（agentlink 自动维护，请勿手改此段）
 
-本项目在 DSH / Codex / Claude 之间切换过。**接手任何任务前**，先读 `.agentlink/context.md`，
-或运行 `agentlink sync && agentlink brief` 取最新上下文（对话结论、待办、最近改动）。
+本项目在 DSH / Codex / Claude 之间切换过。**接手任何任务前**，先运行 `agentlink brief`
+（或在聊天里说"接着之前的做"），取最新上下文：对话结论、待办、最近改动。
+`.agentlink/context.md` 是上一次的速览，仅在不能执行命令时才读它。
 
 最近一次同步：{synced_at or "尚未同步"}
 {MARK_END}

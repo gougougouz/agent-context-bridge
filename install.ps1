@@ -129,6 +129,12 @@ Copy-Item -Path (Join-Path $inner.FullName "*") -Destination $Dir -Recurse -Forc
 Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
 Say "$Dir"
 
+# remember the interpreter this script actually picked: the PATH entry must use
+# the same one, otherwise zstandard and the version check can disagree
+$pyExe = (PyRun -c "import sys; print(sys.executable)" | Out-String).Trim()
+$marker = Join-Path $Dir ".agentlink-python"
+[System.IO.File]::WriteAllText($marker, $pyExe + "`n", (New-Object System.Text.UTF8Encoding($false)))
+
 # ---------------------------------------------------------------- dependency
 Head "3/4  dependency"
 if (-not $NoDeps) {
@@ -144,7 +150,7 @@ if (-not $NoDeps) {
         PyRun -m pip install --quiet --disable-pip-version-check zstandard
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  ! pip install failed - Codex/Claude still work, DSH needs it later:" -ForegroundColor Yellow
-            Write-Host "    $py -m pip install zstandard" -ForegroundColor Yellow
+            Write-Host "    & '$pyExe' -m pip install zstandard" -ForegroundColor Yellow
         }
     }
 }
@@ -155,9 +161,10 @@ $env:PYTHONPATH = Join-Path $Dir "src"
 PyRun -m agentlink install --agents $Agents
 if ($LASTEXITCODE -ne 0) { Fail "skill installation failed" }
 
-$installedVersion = (PyRun -m agentlink --version 2>$null | Out-String).Trim()
+$launcher = Join-Path $Dir "bin\agentlink.cmd"
+$installedVersion = (& $launcher --version 2>$null | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $installedVersion) {
-    Fail "installed files did not run: try  $py -m agentlink doctor  with PYTHONPATH=$Dir\src"
+    Fail "the launcher did not run: check $pyExe or $Dir\src"
 }
 Say $installedVersion
 

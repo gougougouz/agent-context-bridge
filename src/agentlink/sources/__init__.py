@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
 from ..model import AGENTS, Event, IngestResult, Session
 from ..store import Store
-from ..util import debug, now_iso
+from ..util import ci, debug, now_iso
 from .base import Source
 from .claude import ClaudeSource
 from .codex import CodexSource
@@ -37,14 +36,23 @@ def get_source(name: str) -> Source:
 
 
 def project_roots(store: Store) -> list[str]:
-    """The project root plus any old paths recorded in config.roots (project moved)."""
+    """The project root plus old paths from config.roots.
+
+    These are historical identities, not directories: after a move or rename the
+    old path is gone, and that is exactly when the alias matters.
+    """
     roots = [str(store.root)]
+    seen = {ci(roots[0])}
     for extra in store.config.get("roots") or []:
+        if not extra:
+            continue
         try:
-            if extra and Path(extra).is_dir() and str(extra) not in roots:
-                roots.append(str(extra))
+            key = ci(str(extra))
         except OSError:
             continue
+        if key not in seen:
+            seen.add(key)
+            roots.append(str(extra))
     return roots
 
 

@@ -66,6 +66,11 @@ find "$DIR" -mindepth 1 -maxdepth 1 ! -name '.venv' -exec rm -rf {} +
 cp -R "$INNER"/. "$DIR"/
 say "$DIR"
 
+# remember the interpreter this script actually picked: the PATH entry must use
+# the same one, otherwise zstandard and the version check can disagree
+PY_EXE="$("$PY" -c 'import sys; print(sys.executable)')"
+printf '%s\n' "$PY_EXE" > "$DIR/.agentlink-python"
+
 # ------------------------------------------------------------------ dependency
 head "3/4  dependency"
 if [ "${AGENTLINK_NO_DEPS:-0}" != "1" ]; then
@@ -82,17 +87,20 @@ fi
 head "4/4  skill"
 PYTHONPATH="$DIR/src" PYTHONUNBUFFERED=1 "$PY" -m agentlink install --agents "$AGENTS" \
   || fail "skill installation failed"
-VERSION="$(PYTHONPATH="$DIR/src" "$PY" -m agentlink --version 2>/dev/null || true)"
-[ -n "$VERSION" ] || fail "installed files did not run: $PY -m agentlink doctor (with PYTHONPATH=$DIR/src)"
+BIN="$DIR/bin"
+chmod +x "$BIN/agentlink.sh" 2>/dev/null || true
+VERSION="$("$BIN/agentlink.sh" --version 2>/dev/null || true)"
+[ -n "$VERSION" ] || fail "the launcher did not run: check $PY_EXE or $DIR/src"
 say "$VERSION"
 
 if [ "${AGENTLINK_NO_PATH:-0}" != "1" ]; then
-  BIN="$DIR/bin"
-  chmod +x "$BIN/agentlink.sh" 2>/dev/null || true
   LINK_DIR="$HOME/.local/bin"
   mkdir -p "$LINK_DIR"
   ln -sf "$BIN/agentlink.sh" "$LINK_DIR/agentlink"
   say "linked $LINK_DIR/agentlink"
+  # verify the entry users will actually call, through the symlink
+  LINKED="$("$LINK_DIR/agentlink" --version 2>/dev/null || true)"
+  [ -n "$LINKED" ] || fail "the PATH entry at $LINK_DIR/agentlink does not run"
   case ":$PATH:" in
     *":$LINK_DIR:"*) ;;
     *) say "add this to your shell profile:  export PATH=\"$LINK_DIR:\$PATH\"" ;;

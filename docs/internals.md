@@ -8,7 +8,7 @@ project's `.agentlink/` directory (and `AGENTS.md` / `CLAUDE.md` when you ask fo
 | Tool | Location | Format | Cursor |
 | --- | --- | --- | --- |
 | DSH | `~/.dsh/sessions/<munged project>/session-*/session.v4.jsonl.zstd` | zstd, one JSON record per line, several frames | record `seq` (the file is rewritten each turn) |
-| Codex (ChatGPT) | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | JSONL, append-only | byte offset + line index |
+| Codex (ChatGPT) | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` plus `archived_sessions/` | JSONL, append-only | byte offset + line index |
 | Claude Code | `~/.claude/projects/<munged project>/*.jsonl` | JSONL, append-only | byte offset + line index |
 
 `$DSH_HOME`, `$CODEX_HOME` and `$CLAUDE_CONFIG_DIR` are honoured when set.
@@ -16,11 +16,15 @@ project's `.agentlink/` directory (and `AGENTS.md` / `CLAUDE.md` when you ask fo
 ## How a session is claimed by a project
 
 A session belongs to the project when the `cwd` it recorded is inside the project root,
-subdirectories included. Paths are normalised with `realpath`, which also resolves Windows 8.3
+subdirectories included. Claude's folder name is only a hint: it is lossy
+(`project-one` and `project_one` collapse to the same directory), so a recorded `cwd` always
+decides, and the folder name is consulted only when no record carries one. Paths are normalised with `realpath`, which also resolves Windows 8.3
 short names (`RUNNER~1`) — CI caught that one.
 
 If a project is moved or renamed, add the old absolute path to `roots` in
-`.agentlink/config.json`; sessions recorded under any listed root count as this project.
+`.agentlink/config.json`; sessions recorded under any listed root count as this project. The
+old path does not have to exist — after a real move it usually does not, and that is exactly
+when the alias is needed.
 
 ## Incremental reads
 
@@ -33,6 +37,28 @@ already ingested.
 
 Reads are tolerant on purpose: a line that is not JSON is skipped, a line larger than 8 MB is
 skipped, and an unreadable file produces a warning in `--debug` output rather than an exception.
+
+## Import order vs. time order
+
+The journal is append-only and written in import order: a tool synced later adds its
+records at the end, even if those records are older. Reading the tail of the file would
+therefore mistake "imported last" for "happened last", so `Store.events()` sorts by the
+parsed timestamp (file position breaks ties) before any limit is applied, and the limit is
+taken from that sorted order. A backfill of 500 old records cannot push the newest request
+out of the brief.
+
+## What a summary has read
+
+`coverage.journal_through` is a journal line count, not a timestamp. Time cannot express
+it: a session discovered after the summary was written is new to us while its messages are
+older than the summary. The digest reports the line count it actually handed over, and
+`summary apply` stores it; the next incremental digest returns everything from that line on.
+
+Unread records are delivered oldest-first and the watermark only moves over material that
+was actually shown, so a backlog larger than the digest window is consumed in order rather
+than skipped. The newest few asks travel in a separate `latest_asks` field, so the summary
+still reflects "now" while the backlog catches up. Summaries written before this field
+existed fall back to the old timestamp rule and are upgraded on their next apply.
 
 ## Noise filtering
 

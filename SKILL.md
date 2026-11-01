@@ -64,6 +64,9 @@ agentlink summary apply -f summary.json
 }
 ```
 
+材料里有一个 `coverage` 字段，原样带回 JSON（`"coverage": {"journal_through": N}`），
+下次增量就能精确知道读到哪了；漏了也没关系，apply 会按刚保存时的记录数补上。
+
 写的时候：只写材料里能证实的；每条一句话、60 字以内；写结论，不要抄原文；
 拿不准的放进 `blocked` 或 `risks`。`agentlink status` 会告诉你摘要落后多少条，
 落后少于 6 条就不用重做 —— 那份缓存仍然有效。

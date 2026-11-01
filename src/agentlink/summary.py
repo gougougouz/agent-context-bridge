@@ -1,4 +1,4 @@
-﻿"""The optional AI layer: a validated, structured handoff summary.
+"""The optional AI layer: a validated, structured handoff summary.
 
 The deterministic digest says *what happened*; this summary says *what it meant*.
 Any capable agent can write it (see `agentlink digest` for the input contract and
@@ -26,6 +26,7 @@ def empty() -> dict:
         "generated_at": "",
         "generator": "",
         "window": {"from": "", "to": "", "events": 0},
+        "coverage": {"journal_through": None, "to": ""},
         "project": {"goal": "", "status": "", "stack": ""},
         "state": {field: [] for field in LIST_FIELDS},
         "sessions": [],
@@ -89,6 +90,15 @@ def normalize(payload: dict) -> dict:
         })
     base["sessions"] = sessions[:20]
     base["notes_for_next_agent"] = _as_list(payload.get("notes_for_next_agent"))[:12]
+    cov = payload.get("coverage") or {}
+    if isinstance(cov, dict) and cov.get("journal_through") is not None:
+        try:
+            base["coverage"] = {
+                "journal_through": max(0, int(cov["journal_through"])),
+                "to": str(cov.get("to") or ""),
+            }
+        except (TypeError, ValueError):
+            pass
     return base
 
 
@@ -108,6 +118,22 @@ def load(store: Store) -> dict | None:
 
 def save(store: Store, payload: dict) -> dict:
     data = normalize(payload)
+    if data["coverage"]["journal_through"] is None:
+        # the agent may drop the coverage block; trust the last digest we handed
+        # out, which is exactly the material it was asked to read
+        last = store.state.get("last_digest") or {}
+        try:
+            through = last.get("journal_through")
+            if through is not None:
+                data["coverage"]["journal_through"] = int(through)
+            else:
+                # hand-written summary with no digest in this session: it covers
+                # what existed when it was saved, and anything imported later is new
+                data["coverage"]["journal_through"] = store.journal_len()
+        except (TypeError, ValueError):
+            pass
+    if data["coverage"]["journal_through"] is not None and not data["coverage"]["to"]:
+        data["coverage"]["to"] = now_iso()
     write_json(path_for(store), data)
     return data
 
@@ -123,23 +149,45 @@ def is_stale(store: Store, data: dict) -> bool:
     return b > a
 
 
+def coverage_index(data: dict) -> int | None:
+    """Journal line count this summary has already read (None for old summaries)."""
+    cov = data.get("coverage") or {}
+    try:
+        value = cov.get("journal_through")
+        return None if value is None else max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def coverage_end(data: dict) -> str:
     """Timestamp up to which this summary has read the transcripts."""
     window = data.get("window") or {}
-    return str(window.get("to") or data.get("generated_at") or "")
+    cov = data.get("coverage") or {}
+    return str(window.get("to") or cov.get("to") or data.get("generated_at") or "")
+
+
+def new_events_indexed(store: Store, data: dict) -> list[tuple[int, object]]:
+    """Events the summary has not read yet, with their journal position.
+
+    Position beats time here: a session discovered after the summary was written
+    is *newer to us* even though its messages are older, and must still show up
+    in the next incremental digest.
+    """
+    through = coverage_index(data)
+    if through is not None:
+        return [pair for pair in store.events_with_index() if pair[0] >= through]
+    cutoff = iso_to_dt(coverage_end(data))
+    if not cutoff:
+        return store.events_with_index()
+    return [
+        pair for pair in store.events_with_index()
+        if (iso_to_dt(pair[1].ts) or cutoff) > cutoff
+    ]
 
 
 def new_events_since(store: Store, data: dict) -> list:
     """Journal events that appeared after the summary was written."""
-    cutoff = iso_to_dt(coverage_end(data))
-    if not cutoff:
-        return store.events()
-    out = []
-    for ev in store.events():
-        stamp = iso_to_dt(ev.ts)
-        if stamp and stamp > cutoff:
-            out.append(ev)
-    return out
+    return [event for _, event in new_events_indexed(store, data)]
 
 
 def needs_refresh(store: Store, data: dict | None, min_new_events: int = 6) -> tuple[bool, int]:

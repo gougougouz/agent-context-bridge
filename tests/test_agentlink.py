@@ -1,4 +1,4 @@
-﻿"""Offline tests for the three transcript readers and the digest builder.
+"""Offline tests for the three transcript readers and the digest builder.
 
 Run with:  python -m unittest discover -s tests -v
 No real agent data is touched: every fixture is written into a temp directory.
@@ -454,6 +454,180 @@ class AgentlinkTestCase(unittest.TestCase):
         found = discover_sessions(store, ["dsh"])
         self.assertTrue(found, "alias root should surface the old session")
         self.assertEqual(found[0].cwd, str(old_root))
+
+
+    # ------------------------------------------------- review regressions
+
+    def test_latest_task_follows_time_not_import_order(self):
+        """A tool synced later must not push its older asks to the front."""
+        from agentlink.digest import _current_tasks
+
+        store = self.store()
+        store.append_events([Event(agent="codex", session="c1", role="user",
+                                   text="最新请求：先把对账跑通",
+                                   ts="2026-10-30T10:00:00+08:00", seq=1)])
+        store.append_events([Event(agent="claude", session="k1", role="user",
+                                   text="旧请求：先聊聊架构",
+                                   ts="2026-10-01T10:00:00+08:00", seq=1)])
+
+        tasks = _current_tasks(store.events(limit=10))
+        self.assertIn("最新请求", tasks[0])
+
+    def test_recent_window_keeps_newest_after_old_backfill(self):
+        """500 older records imported later must not push out the newest one."""
+        store = self.store()
+        store.append_events([Event(agent="codex", session="c1", role="user",
+                                   text="最新请求：继续对账",
+                                   ts="2026-10-30T10:00:00+08:00", seq=1)])
+        store.append_events([
+            Event(agent="claude", session="k1", role="user", text=f"旧消息{i}",
+                  ts=f"2026-10-01T10:{i // 60:02d}:{i % 60:02d}+08:00", seq=i)
+            for i in range(500)
+        ])
+
+        window = store.events(limit=400)
+        self.assertEqual(len(window), 400)
+        self.assertTrue(any("最新请求" in e.text for e in window))
+        self.assertIn("最新请求", window[-1].text)
+
+    def test_claude_munged_collision_does_not_import_other_project(self):
+        """project-one and project_one share a folder name; cwd must decide."""
+        from agentlink.sources import discover_sessions
+
+        other = self.tmp / "project_one"
+        other.mkdir()
+        folder = self.home / ".claude" / "projects" / claude_project_dirname(str(self.project))
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "session-x.jsonl").write_text(_jsonl([
+            {"type": "user", "cwd": str(other), "sessionId": "x",
+             "message": {"role": "user", "content": "别的项目的事"}},
+        ]), encoding="utf-8")
+
+        self.assertEqual(discover_sessions(self.store(), ["claude"]), [])
+
+    def test_history_discovered_later_enters_incremental_digest(self):
+        """A session imported after the summary is new to us even if it is older."""
+        from agentlink import summary as summary_mod
+        from agentlink.digest import build_digest_payload
+
+        store = self.store()
+        store.append_events([Event(agent="codex", session="c1", role="user",
+                                   text="一月一日的工作",
+                                   ts="2026-01-01T10:00:00+08:00", seq=1)])
+        payload = build_digest_payload(store, max_tokens=6000)
+        self.assertIn("coverage", payload)
+        summary_mod.save(store, {
+            "version": 1,
+            "project": {"goal": "把对账跑通"},
+            "state": {"next": ["跑对账"]},
+            "coverage": payload["coverage"],
+        })
+
+        store.append_events([Event(agent="claude", session="k1", role="user",
+                                   text="补录的旧会话：接口已经改过",
+                                   ts="2026-01-01T09:00:00+08:00", seq=1)])
+
+        again = build_digest_payload(store, max_tokens=6000)
+        texts = [item["text"] for item in again["new_events"]]
+        self.assertIn("补录的旧会话：接口已经改过", texts)
+        self.assertGreaterEqual(again["new_event_count"], 1)
+
+    def test_init_hook_creates_the_context_file_it_points_at(self):
+        import contextlib
+        from agentlink import cli
+
+        # default layout: the pointer promises .agentlink/context.md in the project
+        os.environ.pop("AGENTLINK_STATE_DIR", None)
+        self.write_codex([
+            {"type": "session_meta", "payload": {"id": "codex-1", "cwd": PROJECT}},
+            {"type": "response_item", "timestamp": "2026-01-01T10:00:00Z",
+             "payload": {"type": "message", "role": "user",
+                         "content": [{"type": "input_text", "text": "接着做导出"}]}},
+        ])
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            cli.main(["init", "--hook", "--root", str(self.project)])
+
+        context = self.project / ".agentlink" / "context.md"
+        self.assertTrue(context.exists(), "the pointer names a file that must exist")
+        pointer = (self.project / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("agentlink brief", pointer)
+
+    def test_codex_archived_sessions_are_discovered(self):
+        from agentlink.sources import discover_sessions
+
+        folder = self.home / ".codex" / "archived_sessions" / "2025" / "12" / "31"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "rollout-2025-12-31T00-00-00-old.jsonl").write_text(_jsonl([
+            {"type": "session_meta", "payload": {"id": "codex-old", "cwd": PROJECT}},
+            {"type": "response_item", "timestamp": "2025-12-31T10:00:00Z",
+             "payload": {"type": "message", "role": "user",
+                         "content": [{"type": "input_text", "text": "归档前的工作"}]}},
+        ]), encoding="utf-8")
+
+        found = discover_sessions(self.store(), ["codex"])
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0].path.endswith("rollout-2025-12-31T00-00-00-old.jsonl"))
+
+    def test_alias_root_works_after_the_old_directory_is_gone(self):
+        """Moving the project deletes the old path; the alias must still match."""
+        from agentlink.sources import discover_sessions
+
+        ghost = self.tmp / "gone-project"
+        self.write_dsh(
+            [{"type": "session_meta", "id": "s1", "cwd": str(ghost), "title": "old"}],
+            cwd=str(ghost),
+        )
+        self.assertFalse(ghost.exists())
+
+        store = self.store()
+        store.config["roots"] = [str(ghost)]
+        store.save_config()
+
+        found = discover_sessions(store, ["dsh"])
+        self.assertTrue(found, "a historical path is an identity, not a directory")
+        self.assertEqual(found[0].cwd, str(ghost))
+
+    def test_launchers_do_not_trust_dirname_alone(self):
+        """The PATH entry is a symlink/marker consumer, not a bare dirname."""
+        repo = Path(__file__).resolve().parents[1]
+        sh = (repo / "bin" / "agentlink.sh").read_text(encoding="utf-8")
+        self.assertIn("readlink", sh)
+        self.assertIn(".agentlink-python", sh)
+        cmd = (repo / "bin" / "agentlink.cmd").read_text(encoding="utf-8")
+        self.assertIn(".agentlink-python", cmd)
+        for name in ("install.sh", "install.ps1"):
+            text = (repo / name).read_text(encoding="utf-8")
+            self.assertIn(".agentlink-python", text, f"{name} must record the chosen python")
+
+
+    def test_large_backlog_advances_coverage_without_skipping(self):
+        """A batch bigger than the digest window is consumed oldest-first."""
+        from agentlink import summary as summary_mod
+        from agentlink.digest import build_digest_payload
+
+        store = self.store()
+        store.append_events([
+            Event(agent="codex", session="c1", role="user", text=f"第{i}条",
+                  ts=f"2026-01-01T10:{i // 60:02d}:{i % 60:02d}+08:00", seq=i)
+            for i in range(100)
+        ])
+        first = build_digest_payload(store, max_tokens=6000)
+        summary_mod.save(store, {"version": 1, "project": {"goal": "g"}, "coverage": first["coverage"]})
+
+        store.append_events([
+            Event(agent="claude", session="k1", role="user", text=f"新{i}",
+                  ts=f"2026-01-02T10:{i // 60:02d}:{i % 60:02d}+08:00", seq=i)
+            for i in range(200)
+        ])
+        second = build_digest_payload(store, max_tokens=6000)
+        self.assertEqual(second["new_event_count"], 200)
+        self.assertLessEqual(len(second["new_events"]), 80)
+        self.assertEqual(second["new_events"][0]["text"], "新0")  # oldest unread first
+        summary_mod.save(store, {"version": 1, "project": {"goal": "g"}, "coverage": second["coverage"]})
+
+        third = build_digest_payload(store, max_tokens=6000)
+        self.assertEqual(third["new_event_count"], 200 - len(second["new_events"]))
+        self.assertEqual(third["new_events"][0]["text"], f"新{len(second['new_events'])}")
 
 
 if __name__ == "__main__":

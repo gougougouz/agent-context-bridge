@@ -34,3 +34,16 @@ jobs:
         run: |
           python -m agentlink --version
           python -m agentlink doctor || true
+
+      - name: Smoke test the Linux launcher (through a symlink)
+        if: runner.os == 'Linux'
+        run: |
+          sh bin/agentlink.sh --version
+          mkdir -p "$RUNNER_TEMP/linkbin"
+          ln -sf "$PWD/bin/agentlink.sh" "$RUNNER_TEMP/linkbin/agentlink"
+          (cd / && "$RUNNER_TEMP/linkbin/agentlink" --version)
+
+      - name: Smoke test the Windows launcher
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: bin\agentlink.cmd --version

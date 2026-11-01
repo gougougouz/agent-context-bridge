@@ -34,9 +34,22 @@ class CodexSource(Source):
     label = "Codex / ChatGPT"
 
     def root_dir(self) -> Path:
+        return self._codex_home() / "sessions"
+
+    def _codex_home(self) -> Path:
         home = os.environ.get("CODEX_HOME")
-        base = Path(home).expanduser() if home else Path(os.path.expanduser("~")) / ".codex"
-        return base / "sessions"
+        return Path(home).expanduser() if home else Path(os.path.expanduser("~")) / ".codex"
+
+    def root_dirs(self) -> list[Path]:
+        """Active sessions plus archived ones, which still belong to the project."""
+        home = self._codex_home()
+        return [d for d in (home / "sessions", home / "archived_sessions") if d.is_dir()]
+
+    def available(self) -> bool:
+        try:
+            return bool(self.root_dirs())
+        except OSError:
+            return False
 
     def _titles(self) -> dict[str, str]:
         index = self.root_dir().parent / "session_index.jsonl"
@@ -49,12 +62,15 @@ class CodexSource(Source):
         return out
 
     def discover(self, project_root: str) -> list[Session]:
-        root = self.root_dir()
-        if not root.is_dir():
+        roots = self.root_dirs()
+        if not roots:
             return []
         titles = self._titles()
         sessions: list[Session] = []
-        for path in sorted(root.rglob("rollout-*.jsonl")):
+        paths: list[Path] = []
+        for root in roots:
+            paths.extend(sorted(root.rglob("rollout-*.jsonl")))
+        for path in paths:
             try:
                 meta = first_record(path)
             except OSError as exc:

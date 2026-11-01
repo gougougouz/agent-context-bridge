@@ -104,6 +104,11 @@ def cmd_init(args) -> int:
     else:
         _out(t("init.empty"))
     if getattr(args, "hook", False):
+        # the pointer tells the next agent where to look, so create that file now
+        context = build_context(store, include_git=True)
+        store.context_path.write_text(context, encoding="utf-8", newline="\n")
+        store.state["last_brief_ts"] = now_iso()
+        store.save_state()
         touched = write_pointers(store.root, store.state.get("last_sync", ""))
         _out("")
         for path in touched:
@@ -238,6 +243,12 @@ def cmd_digest(args) -> int:
         since_last=not args.full,
         max_events=args.max_events or 400,
     )
+    coverage = payload.get("coverage") or {}
+    store.state["last_digest"] = {
+        "journal_through": int(coverage.get("journal_through") or 0),
+        "at": now_iso(),
+    }
+    store.save_state()
     text = json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None)
     if args.out:
         from .util import atomic_write_text
@@ -408,6 +419,10 @@ def cmd_hook(args) -> int:
             _out("没有找到 agentlink 写入的提示段。")
         return 0
     sync_sources(store, agents=_agent_names(args.agent))
+    context = build_context(store, include_git=True)
+    store.context_path.write_text(context, encoding="utf-8", newline="\n")
+    store.state["last_brief_ts"] = now_iso()
+    store.save_state()
     synced = store.state.get("last_sync", "")
     touched = write_pointers(store.root, synced, files)
     _out("已写入/刷新上下文提示段：")

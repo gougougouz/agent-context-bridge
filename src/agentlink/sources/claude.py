@@ -13,8 +13,24 @@ from pathlib import Path
 
 from ..model import Event, Session
 from ..store import Store
-from ..util import ci, clean_text, claude_project_dirname, debug, project_match
+from ..util import (
+    ci,
+    clean_text,
+    claude_project_dirname,
+    debug,
+    project_match,
+    read_jsonl,
+)
 from .base import Source, first_record
+
+
+def _first_cwd(path, limit: int = 40) -> str:
+    """First cwd recorded in a transcript (headers are not always first)."""
+    for rec in read_jsonl(path, limit=limit):
+        cwd = rec.get("cwd")
+        if cwd:
+            return str(cwd)
+    return ""
 
 
 class ClaudeSource(Source):
@@ -47,8 +63,14 @@ class ClaudeSource(Source):
                     debug(f"claude header failed {path}: {exc}")
                     continue
                 cwd = str(head.get("cwd") or "")
-                by_name = ci(folder.name) == ci(claude_project_dirname(project_root))
-                if not (by_name or project_match(cwd, project_root)):
+                if not cwd:
+                    # the munged directory name is lossy (project-one == project_one),
+                    # so it only decides when no record carries a real path
+                    cwd = _first_cwd(path)
+                if cwd:
+                    if not project_match(cwd, project_root):
+                        continue
+                elif ci(folder.name) != ci(claude_project_dirname(project_root)):
                     continue
                 stat = path.stat()
                 sessions.append(
