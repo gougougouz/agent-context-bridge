@@ -630,6 +630,38 @@ class AgentlinkTestCase(unittest.TestCase):
         self.assertEqual(third["new_events"][0]["text"], f"新{len(second['new_events'])}")
 
 
+    def test_install_helpers_write_files_on_old_python(self):
+        """Path.write_text(newline=) is 3.10+; these helpers must stay 3.9-safe."""
+        from agentlink.install import build_launcher, write_pointers
+
+        target = self.tmp / "skill"
+        target.mkdir()
+        written = build_launcher(target)
+        self.assertTrue(all(Path(item).exists() for item in written))
+
+        touched = write_pointers(self.project, "2026-01-01T00:00:00+08:00", ("AGENTS.md",))
+        self.assertTrue(Path(touched[0]).exists())
+        self.assertIn("agentlink brief", Path(touched[0]).read_text(encoding="utf-8"))
+
+    def test_cli_brief_writes_context_file(self):
+        import contextlib
+        from agentlink import cli
+
+        os.environ.pop("AGENTLINK_STATE_DIR", None)
+        self.write_codex([
+            {"type": "session_meta", "payload": {"id": "codex-1", "cwd": PROJECT}},
+            {"type": "response_item", "timestamp": "2026-01-01T10:00:00Z",
+             "payload": {"type": "message", "role": "user",
+                         "content": [{"type": "input_text", "text": "接着做导出"}]}},
+        ])
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            cli.main(["brief", "--root", str(self.project), "--no-git"])
+
+        context = self.project / ".agentlink" / "context.md"
+        self.assertTrue(context.exists())
+        self.assertIn("导出", context.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

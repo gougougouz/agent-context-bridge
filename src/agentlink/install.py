@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .model import AGENT_LABELS
 from .i18n import t
-from .util import WINDOWS
+from .util import WINDOWS, atomic_write_text
 
 SKILL_NAME = "agent-context-bridge"
 
@@ -78,8 +78,9 @@ def build_launcher(target_dir: Path) -> list[str]:
         script.write_text(LAUNCHER_CMD.format(python=py, src=src), encoding="utf-8")
         written.append(str(script))
     script = target_dir / "agentlink.sh"
-    script.write_text(LAUNCHER_SH.format(python=py.as_posix(), src=src.as_posix()),
-                      encoding="utf-8", newline="\n")
+    atomic_write_text(script, LAUNCHER_SH.format(python=py.as_posix(), src=src.as_posix()))
+    if not WINDOWS:
+        os.chmod(script, 0o755)
     written.append(str(script))
     return written
 
@@ -128,7 +129,7 @@ def install(agents: list[str], force: bool = True) -> list[dict]:
                 (target / "docs").mkdir(exist_ok=True)
                 shutil.copy2(doc, target / "docs" / doc.name)
         launchers = build_launcher(target)
-        (target / "LOCAL.md").write_text(local_md(agent, target), encoding="utf-8", newline="\n")
+        atomic_write_text(target / "LOCAL.md", local_md(agent, target))
         for extra in ("agentlink.cmd", "agentlink.sh"):
             p = target / extra
             if p.exists() and not WINDOWS and extra.endswith(".cmd"):
@@ -170,7 +171,7 @@ def write_pointers(root: Path, synced_at: str, files=POINTER_FILES) -> list[str]
         else:
             sep = "" if not text else ("\n" if text.endswith("\n") else "\n\n")
             new = text + sep + block
-        path.write_text(new, encoding="utf-8", newline="\n")
+        atomic_write_text(path, new)
         touched.append(str(path))
     return touched
 
@@ -188,7 +189,7 @@ def remove_pointers(root: Path, files=POINTER_FILES) -> list[str]:
         end = text.index(MARK_END) + len(MARK_END)
         new = (text[:start].rstrip("\n") + "\n" + text[end:].lstrip("\n")).strip() + "\n"
         if new.strip():
-            path.write_text(new, encoding="utf-8", newline="\n")
+            atomic_write_text(path, new)
         else:
             path.unlink()
         removed.append(str(path))

@@ -33,7 +33,7 @@ from .model import AGENTS, AGENT_LABELS
 from .sources import SOURCES, discover_sessions, sync as sync_sources
 from .store import Store
 from .i18n import set_lang, t
-from .util import human_size, now_iso, parse_since, rel_time, width
+from .util import atomic_write_text, human_size, now_iso, parse_since, rel_time, width
 
 
 # --------------------------------------------------------------------- helpers
@@ -106,7 +106,7 @@ def cmd_init(args) -> int:
     if getattr(args, "hook", False):
         # the pointer tells the next agent where to look, so create that file now
         context = build_context(store, include_git=True)
-        store.context_path.write_text(context, encoding="utf-8", newline="\n")
+        atomic_write_text(store.context_path, context)
         store.state["last_brief_ts"] = now_iso()
         store.save_state()
         touched = write_pointers(store.root, store.state.get("last_sync", ""))
@@ -123,7 +123,7 @@ def cmd_sync(args) -> int:
     before = len(store.events())
     results = sync_sources(store, agents=_agent_names(args.agent))
     context = build_context(store, budget=args.budget, include_git=not args.no_git)
-    store.context_path.write_text(context, encoding="utf-8", newline="\n")
+    atomic_write_text(store.context_path, context)
     store.state["last_brief"] = True
     store.save_state()
 
@@ -191,12 +191,10 @@ def cmd_brief(args) -> int:
         with_ai=not args.no_ai,
         since=since,
     )
-    store.context_path.write_text(context, encoding="utf-8", newline="\n")
+    atomic_write_text(store.context_path, context)
     store.state["last_brief_ts"] = now_iso()
     store.save_state()
     if getattr(args, "out", None):
-        from .util import atomic_write_text
-
         atomic_write_text(Path(args.out), context)
         _err(t("brief.saved", path=args.out))
     if getattr(args, "copy", False):
@@ -251,8 +249,6 @@ def cmd_digest(args) -> int:
     store.save_state()
     text = json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None)
     if args.out:
-        from .util import atomic_write_text
-
         atomic_write_text(Path(args.out), text + "\n")
         _err(t("digest.saved", path=args.out, tokens=estimate_tokens(text), mode=payload["mode"]))
     else:
@@ -401,7 +397,7 @@ def cmd_handoff(args) -> int:
     store = open_store(args)
     sync_sources(store, agents=_agent_names(args.agent))
     text = build_handoff(store, args.to, budget=args.budget)
-    store.handoff_path.write_text(text, encoding="utf-8", newline="\n")
+    atomic_write_text(store.handoff_path, text)
     _out(text)
     return 0
 
@@ -420,7 +416,7 @@ def cmd_hook(args) -> int:
         return 0
     sync_sources(store, agents=_agent_names(args.agent))
     context = build_context(store, include_git=True)
-    store.context_path.write_text(context, encoding="utf-8", newline="\n")
+    atomic_write_text(store.context_path, context)
     store.state["last_brief_ts"] = now_iso()
     store.save_state()
     synced = store.state.get("last_sync", "")
